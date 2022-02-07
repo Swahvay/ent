@@ -15,15 +15,16 @@ import {
   Changeset,
   WriteOperation,
 } from "@snowtop/ent/action";
-import { Event, User } from "../../..";
+import { Address, Event } from "../../..";
 import { EventBuilder, EventInput } from "./event_builder";
 
 export interface EventCreateInput {
   name: string;
-  creatorID: ID | Builder<User>;
+  creatorID: ID;
   startTime: Date;
   endTime?: Date | null;
   location: string;
+  addressID?: ID | null | Builder<Address>;
 }
 
 export class CreateEventActionBase implements Action<Event> {
@@ -59,19 +60,19 @@ export class CreateEventActionBase implements Action<Event> {
 
   async save(): Promise<Event | null> {
     await this.builder.save();
-    return await this.builder.editedEnt();
+    return this.builder.editedEnt();
   }
 
   async saveX(): Promise<Event> {
     await this.builder.saveX();
-    return await this.builder.editedEntX();
+    return this.builder.editedEntX();
   }
 
   static create<T extends CreateEventActionBase>(
     this: new (viewer: Viewer, input: EventCreateInput) => T,
     viewer: Viewer,
     input: EventCreateInput,
-  ): CreateEventActionBase {
+  ): T {
     return new this(viewer, input);
   }
 }

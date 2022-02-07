@@ -21,7 +21,7 @@ export const userToEventsDataLoaderFactory = new IndexLoaderFactory(
   },
 );
 
-export class UserToEventsQueryBase extends CustomEdgeQueryBase<Event> {
+export class UserToEventsQueryBase extends CustomEdgeQueryBase<User, Event> {
   constructor(viewer: Viewer, src: User | ID) {
     super(viewer, {
       src: src,
@@ -37,5 +37,9 @@ export class UserToEventsQueryBase extends CustomEdgeQueryBase<Event> {
     src: User | ID,
   ): T {
     return new this(viewer, src);
+  }
+
+  async sourceEnt(id: ID) {
+    return User.load(this.viewer, id);
   }
 }

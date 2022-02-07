@@ -14,6 +14,7 @@ import {
   saveBuilderX,
 } from "@snowtop/ent/action";
 import { AuthCode, User } from "../../..";
+import { NodeType } from "../../../generated/const";
 import schema from "../../../../schema/auth_code";
 
 export interface AuthCodeInput {
@@ -35,7 +36,9 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
   orchestrator: Orchestrator<AuthCode>;
   readonly placeholderID: ID;
   readonly ent = AuthCode;
+  readonly nodeType = NodeType.AuthCode;
   private input: AuthCodeInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -45,19 +48,19 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-AuthCode`;
     this.input = action.getInput();
+    const updateInput = (d: AuthCodeInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "auth_codes",
       key: "id",
       loaderOptions: AuthCode.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -71,6 +74,16 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<AuthCode>> {
@@ -94,17 +107,17 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
   }
 
   async editedEnt(): Promise<AuthCode | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<AuthCode> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -124,21 +137,33 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
 
   // get value of code. Retrieves it from the input if specified or takes it from existingEnt
   getNewCodeValue(): string | undefined {
-    return this.input.code || this.existingEnt?.code;
+    if (this.input.code !== undefined) {
+      return this.input.code;
+    }
+    return this.existingEnt?.code;
   }
 
   // get value of userID. Retrieves it from the input if specified or takes it from existingEnt
   getNewUserIDValue(): ID | Builder<User> | undefined {
-    return this.input.userID || this.existingEnt?.userID;
+    if (this.input.userID !== undefined) {
+      return this.input.userID;
+    }
+    return this.existingEnt?.userID;
   }
 
   // get value of emailAddress. Retrieves it from the input if specified or takes it from existingEnt
   getNewEmailAddressValue(): string | null | undefined {
-    return this.input.emailAddress || this.existingEnt?.emailAddress;
+    if (this.input.emailAddress !== undefined) {
+      return this.input.emailAddress;
+    }
+    return this.existingEnt?.emailAddress;
   }
 
   // get value of phoneNumber. Retrieves it from the input if specified or takes it from existingEnt
   getNewPhoneNumberValue(): string | null | undefined {
-    return this.input.phoneNumber || this.existingEnt?.phoneNumber;
+    if (this.input.phoneNumber !== undefined) {
+      return this.input.phoneNumber;
+    }
+    return this.existingEnt?.phoneNumber;
   }
 }

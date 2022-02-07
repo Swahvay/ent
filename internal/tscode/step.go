@@ -91,6 +91,7 @@ func (s *Step) processPattern(processor *codegen.Processor, pattern *schema.Patt
 			return writeAssocEdgeQueryFile(
 				processor,
 				edge,
+				"Ent",
 				getFilePathForPatternAssocEdgeQueryFile(processor.Config, pattern, edge),
 			)
 		})
@@ -137,6 +138,7 @@ func (s *Step) processEdges(processor *codegen.Processor, nodeData *schema.NodeD
 			return writeAssocEdgeQueryFile(
 				processor,
 				edge,
+				nodeData.Node,
 				getFilePathForAssocEdgeQueryFile(processor.Config, nodeData, edge),
 			)
 		})
@@ -165,9 +167,9 @@ func (s *Step) ProcessData(processor *codegen.Processor) error {
 		funcs = append(funcs, s.processNode(processor, info, &serr)...)
 	}
 
-	for _, info := range processor.Schema.Enums {
-		// only lookup table enums get their own files
-		if !info.LookupTableEnum() {
+	for k := range processor.Schema.Enums {
+		info := processor.Schema.Enums[k]
+		if !info.OwnEnumFile() {
 			continue
 		}
 		funcs = append(funcs, func() error {
@@ -195,6 +197,9 @@ func (s *Step) ProcessData(processor *codegen.Processor) error {
 		},
 		func() error {
 			return writeLoadAnyFile(s.nodeTypes, processor)
+		},
+		func() error {
+			return writeLoaderFile(processor)
 		},
 	)
 
@@ -361,6 +366,7 @@ func getImportPathForEnumFile(info *schema.EnumInfo) string {
 	return fmt.Sprintf("src/ent/generated/%s", strcase.ToSnake(info.Enum.Name))
 }
 
+// duplicated in generate_ts_code.go
 func getImportPathForModelFile(nodeData *schema.NodeData) string {
 	return fmt.Sprintf("src/ent/%s", nodeData.PackageName)
 }
@@ -379,6 +385,10 @@ func getImportPathForPatternBaseQueryFile(name string) string {
 
 func getFilePathForConstFile(cfg *codegen.Config) string {
 	return path.Join(cfg.GetAbsPathToRoot(), "src/ent/generated/const.ts")
+}
+
+func getFilePathForLoaderFile(cfg *codegen.Config) string {
+	return path.Join(cfg.GetAbsPathToRoot(), "src/ent/generated/loaders.ts")
 }
 
 func getFilePathForLoadAnyFile(cfg *codegen.Config) string {
@@ -484,18 +494,20 @@ func writeBaseQueryFile(processor *codegen.Processor, nodeData *schema.NodeData)
 	})
 }
 
-func writeAssocEdgeQueryFile(processor *codegen.Processor, e *edge.AssociationEdge, filePath string) error {
+func writeAssocEdgeQueryFile(processor *codegen.Processor, e *edge.AssociationEdge, sourceNode, filePath string) error {
 	cfg := processor.Config
 	imps := tsimport.NewImports(processor.Config, filePath)
 
 	return file.Write(&file.TemplatedBasedFileWriter{
 		Config: processor.Config,
 		Data: struct {
-			Edge    *edge.AssociationEdge
-			Package *codegen.ImportPackage
+			Edge       *edge.AssociationEdge
+			Package    *codegen.ImportPackage
+			SourceNode string
 		}{
-			Edge:    e,
-			Package: cfg.GetImportPackage(),
+			Edge:       e,
+			Package:    cfg.GetImportPackage(),
+			SourceNode: sourceNode,
 		},
 		CreateDirIfNeeded: true,
 		AbsPathToTemplate: util.GetAbsolutePath("assoc_ent_query.tmpl"),
@@ -537,6 +549,10 @@ type BaseQueryEdgeInfo struct {
 	IndexedEdges []edge.IndexedConnectionEdge
 	Node         string
 	FilePath     string
+}
+
+func (b *BaseQueryEdgeInfo) SourcePolymorphic() bool {
+	return b.Node == "Ent"
 }
 
 func writeBasePatternQueryFile(processor *codegen.Processor, pattern *schema.PatternInfo) error {
@@ -649,9 +665,33 @@ func writeLoadAnyFile(nodeData []enum.Data, processor *codegen.Processor) error 
 	})
 }
 
+func writeLoaderFile(processor *codegen.Processor) error {
+	cfg := processor.Config
+	filePath := getFilePathForLoaderFile(cfg)
+	imps := tsimport.NewImports(processor.Config, filePath)
+
+	return file.Write(&file.TemplatedBasedFileWriter{
+		Config: processor.Config,
+		Data: struct {
+			Schema  *schema.Schema
+			Package *codegen.ImportPackage
+		}{
+			processor.Schema,
+			cfg.GetImportPackage(),
+		},
+		CreateDirIfNeeded: true,
+		AbsPathToTemplate: util.GetAbsolutePath("loaders.tmpl"),
+		TemplateName:      "loaders.tmpl",
+		PathToFile:        filePath,
+		TsImports:         imps,
+		FuncMap:           imps.FuncMap(),
+	})
+}
+
 func getSortedInternalEntFileLines(s *schema.Schema) []string {
 	lines := []string{
 		"src/ent/generated/const",
+		"src/ent/generated/loaders",
 	}
 
 	append2 := func(list *[]string, str string) {
@@ -670,7 +710,7 @@ func getSortedInternalEntFileLines(s *schema.Schema) []string {
 
 	var enums []string
 	for _, enum := range s.Enums {
-		if enum.LookupTableEnum() {
+		if enum.OwnEnumFile() {
 			append2(&enums, getImportPathForEnumFile(enum))
 		}
 	}

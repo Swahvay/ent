@@ -2,7 +2,6 @@
 
 import {
   AllowIfViewerPrivacyPolicy,
-  AssocEdge,
   Context,
   CustomQuery,
   Data,
@@ -20,7 +19,6 @@ import {
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
 import {
-  EdgeType,
   Event,
   GuestGroupToGuestsQuery,
   GuestGroupToInvitedEventsQuery,
@@ -120,7 +118,7 @@ export class GuestGroupBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await guestGroupLoader.createLoader(context).load(id);
+    return guestGroupLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends GuestGroupBase>(
@@ -139,8 +137,8 @@ export class GuestGroupBase {
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName,
+      fields,
       ent: this,
       loaderFactory: guestGroupLoader,
     };

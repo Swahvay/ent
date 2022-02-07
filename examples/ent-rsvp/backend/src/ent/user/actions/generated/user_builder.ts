@@ -33,6 +33,7 @@ export class UserBuilder implements Builder<User> {
   readonly placeholderID: ID;
   readonly ent = User;
   private input: UserInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -42,19 +43,19 @@ export class UserBuilder implements Builder<User> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-User`;
     this.input = action.getInput();
+    const updateInput = (d: UserInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "users",
       key: "id",
       loaderOptions: User.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -68,6 +69,16 @@ export class UserBuilder implements Builder<User> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<User>> {
@@ -91,17 +102,17 @@ export class UserBuilder implements Builder<User> {
   }
 
   async editedEnt(): Promise<User | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<User> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -121,17 +132,26 @@ export class UserBuilder implements Builder<User> {
 
   // get value of FirstName. Retrieves it from the input if specified or takes it from existingEnt
   getNewFirstNameValue(): string | undefined {
-    return this.input.firstName || this.existingEnt?.firstName;
+    if (this.input.firstName !== undefined) {
+      return this.input.firstName;
+    }
+    return this.existingEnt?.firstName;
   }
 
   // get value of LastName. Retrieves it from the input if specified or takes it from existingEnt
   getNewLastNameValue(): string | undefined {
-    return this.input.lastName || this.existingEnt?.lastName;
+    if (this.input.lastName !== undefined) {
+      return this.input.lastName;
+    }
+    return this.existingEnt?.lastName;
   }
 
   // get value of EmailAddress. Retrieves it from the input if specified or takes it from existingEnt
   getNewEmailAddressValue(): string | undefined {
-    return this.input.emailAddress || this.existingEnt?.emailAddress;
+    if (this.input.emailAddress !== undefined) {
+      return this.input.emailAddress;
+    }
+    return this.existingEnt?.emailAddress;
   }
 
   // get value of Password. Retrieves it from the input if specified or takes it from existingEnt

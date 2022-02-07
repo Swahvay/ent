@@ -9,10 +9,12 @@ import {
   Viewer,
 } from "@snowtop/ent";
 import { Action, Changeset, WriteOperation } from "@snowtop/ent/action";
-import { Holiday } from "../../..";
+import { DayOfWeek, DayOfWeekAlt, Holiday } from "../../..";
 import { HolidayBuilder, HolidayInput } from "./holiday_builder";
 
 export interface HolidayCreateInput {
+  dayOfWeek: DayOfWeek;
+  dayOfWeekAlt?: DayOfWeekAlt | null;
   label: string;
   date: Date;
 }
@@ -50,19 +52,19 @@ export class CreateHolidayActionBase implements Action<Holiday> {
 
   async save(): Promise<Holiday | null> {
     await this.builder.save();
-    return await this.builder.editedEnt();
+    return this.builder.editedEnt();
   }
 
   async saveX(): Promise<Holiday> {
     await this.builder.saveX();
-    return await this.builder.editedEntX();
+    return this.builder.editedEntX();
   }
 
   static create<T extends CreateHolidayActionBase>(
     this: new (viewer: Viewer, input: HolidayCreateInput) => T,
     viewer: Viewer,
     input: HolidayCreateInput,
-  ): CreateHolidayActionBase {
+  ): T {
     return new this(viewer, input);
   }
 }

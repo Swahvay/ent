@@ -12,7 +12,6 @@ import {
 } from "graphql";
 import { RequestContext } from "@snowtop/ent";
 import { mustDecodeIDFromGQLID } from "@snowtop/ent/graphql";
-import { Address } from "src/ent/";
 import DeleteAddressAction from "src/ent/address/actions/delete_address_action";
 
 interface customAddressDeleteInput {
@@ -27,6 +26,7 @@ export const AddressDeleteInputType = new GraphQLInputObjectType({
   name: "AddressDeleteInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     addressID: {
+      description: "id of Address",
       type: GraphQLNonNull(GraphQLID),
     },
   }),

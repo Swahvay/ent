@@ -10,13 +10,14 @@ import {
   saveBuilder,
   saveBuilderX,
 } from "@snowtop/ent/action";
-import { Event, Guest, GuestData } from "src/ent/";
+import { Event, Guest, GuestData, GuestDataSource } from "src/ent/";
 import schema from "src/schema/guest_data";
 
 export interface GuestDataInput {
   guestID?: ID | Builder<Guest>;
   eventID?: ID | Builder<Event>;
   dietaryRestrictions?: string;
+  source?: GuestDataSource | null;
 }
 
 export interface GuestDataAction extends Action<GuestData> {
@@ -32,6 +33,7 @@ export class GuestDataBuilder implements Builder<GuestData> {
   readonly placeholderID: ID;
   readonly ent = GuestData;
   private input: GuestDataInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -41,19 +43,20 @@ export class GuestDataBuilder implements Builder<GuestData> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-GuestData`;
     this.input = action.getInput();
+    const updateInput = (d: GuestDataInput) =>
+      this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "guest_data",
       key: "id",
       loaderOptions: GuestData.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -67,6 +70,16 @@ export class GuestDataBuilder implements Builder<GuestData> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<GuestData>> {
@@ -90,17 +103,17 @@ export class GuestDataBuilder implements Builder<GuestData> {
   }
 
   async editedEnt(): Promise<GuestData | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<GuestData> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -110,6 +123,7 @@ export class GuestDataBuilder implements Builder<GuestData> {
     addField("guestID", fields.guestID);
     addField("eventID", fields.eventID);
     addField("dietaryRestrictions", fields.dietaryRestrictions);
+    addField("source", fields.source);
     return result;
   }
 
@@ -119,18 +133,33 @@ export class GuestDataBuilder implements Builder<GuestData> {
 
   // get value of guestID. Retrieves it from the input if specified or takes it from existingEnt
   getNewGuestIDValue(): ID | Builder<Guest> | undefined {
-    return this.input.guestID || this.existingEnt?.guestID;
+    if (this.input.guestID !== undefined) {
+      return this.input.guestID;
+    }
+    return this.existingEnt?.guestID;
   }
 
   // get value of eventID. Retrieves it from the input if specified or takes it from existingEnt
   getNewEventIDValue(): ID | Builder<Event> | undefined {
-    return this.input.eventID || this.existingEnt?.eventID;
+    if (this.input.eventID !== undefined) {
+      return this.input.eventID;
+    }
+    return this.existingEnt?.eventID;
   }
 
   // get value of dietaryRestrictions. Retrieves it from the input if specified or takes it from existingEnt
   getNewDietaryRestrictionsValue(): string | undefined {
-    return (
-      this.input.dietaryRestrictions || this.existingEnt?.dietaryRestrictions
-    );
+    if (this.input.dietaryRestrictions !== undefined) {
+      return this.input.dietaryRestrictions;
+    }
+    return this.existingEnt?.dietaryRestrictions;
+  }
+
+  // get value of source. Retrieves it from the input if specified or takes it from existingEnt
+  getNewSourceValue(): GuestDataSource | null | undefined {
+    if (this.input.source !== undefined) {
+      return this.input.source;
+    }
+    return this.existingEnt?.source;
   }
 }

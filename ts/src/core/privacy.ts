@@ -1,16 +1,16 @@
 import {
-  Viewer,
-  ID,
+  Allow,
+  Context,
+  Deny,
   Ent,
+  ID,
   LoadEntOptions,
   PrivacyError,
   PrivacyPolicy,
   PrivacyPolicyRule,
-  Context,
   PrivacyResult,
-  Allow,
-  Deny,
   Skip,
+  Viewer,
 } from "./base";
 import { AssocEdge, loadEdgeForID2, loadEnt } from "./ent";
 import { log } from "./logger";
@@ -154,6 +154,9 @@ export class DenyIfFuncRule implements PrivacyPolicyRule {
   }
 }
 
+/**
+ * @deprecated use AllowIfViewerIsEntPropertyRule
+ */
 export class AllowIfViewerIsRule implements PrivacyPolicyRule {
   constructor(private property: string) {}
 
@@ -164,6 +167,48 @@ export class AllowIfViewerIsRule implements PrivacyPolicyRule {
     }
     if (result === v.viewerID) {
       return Allow();
+    }
+    return Skip();
+  }
+}
+
+export class AllowIfViewerIsEntPropertyRule<T extends Ent>
+  implements PrivacyPolicyRule
+{
+  constructor(private property: keyof T) {}
+
+  async apply(v: Viewer, ent?: T): Promise<PrivacyResult> {
+    const result: any = ent && ent[this.property];
+    if (result === v.viewerID) {
+      return Allow();
+    }
+    return Skip();
+  }
+}
+
+export class AllowIfEntPropertyIsRule<T extends Ent>
+  implements PrivacyPolicyRule
+{
+  constructor(private property: keyof T, private val: any) {}
+
+  async apply(v: Viewer, ent?: T): Promise<PrivacyResult> {
+    const result: any = ent && ent[this.property];
+    if (result === this.val) {
+      return Allow();
+    }
+    return Skip();
+  }
+}
+
+export class DenyIfEntPropertyIsRule<T extends Ent>
+  implements PrivacyPolicyRule
+{
+  constructor(private property: keyof T, private val: any) {}
+
+  async apply(v: Viewer, ent?: T): Promise<PrivacyResult> {
+    const result: any = ent && ent[this.property];
+    if (result === this.val) {
+      return Deny();
     }
     return Skip();
   }
@@ -479,6 +524,9 @@ export async function applyPrivacyPolicyX(
       // specific error throw that
       if (res.error) {
         throw res.error;
+      }
+      if (res.getError) {
+        throw res.getError(policy, rule, ent);
       }
       if (throwErr) {
         throw throwErr();

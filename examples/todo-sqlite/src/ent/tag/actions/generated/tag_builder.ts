@@ -42,19 +42,19 @@ export class TagBuilder implements Builder<Tag> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Tag`;
     this.input = action.getInput();
+    const updateInput = (d: TagInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "tags",
       key: "id",
       loaderOptions: Tag.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -138,17 +138,17 @@ export class TagBuilder implements Builder<Tag> {
   }
 
   async editedEnt(): Promise<Tag | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Tag> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -167,16 +167,25 @@ export class TagBuilder implements Builder<Tag> {
 
   // get value of DisplayName. Retrieves it from the input if specified or takes it from existingEnt
   getNewDisplayNameValue(): string | undefined {
-    return this.input.displayName || this.existingEnt?.displayName;
+    if (this.input.displayName !== undefined) {
+      return this.input.displayName;
+    }
+    return this.existingEnt?.displayName;
   }
 
   // get value of canonicalName. Retrieves it from the input if specified or takes it from existingEnt
   getNewCanonicalNameValue(): string | undefined {
-    return this.input.canonicalName || this.existingEnt?.canonicalName;
+    if (this.input.canonicalName !== undefined) {
+      return this.input.canonicalName;
+    }
+    return this.existingEnt?.canonicalName;
   }
 
   // get value of ownerID. Retrieves it from the input if specified or takes it from existingEnt
   getNewOwnerIDValue(): ID | Builder<Account> | undefined {
-    return this.input.ownerID || this.existingEnt?.ownerID;
+    if (this.input.ownerID !== undefined) {
+      return this.input.ownerID;
+    }
+    return this.existingEnt?.ownerID;
   }
 }

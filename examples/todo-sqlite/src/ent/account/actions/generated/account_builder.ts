@@ -40,19 +40,19 @@ export class AccountBuilder implements Builder<Account> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Account`;
     this.input = action.getInput();
+    const updateInput = (d: AccountInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "accounts",
       key: "id",
       loaderOptions: Account.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -89,17 +89,17 @@ export class AccountBuilder implements Builder<Account> {
   }
 
   async editedEnt(): Promise<Account | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Account> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -117,11 +117,17 @@ export class AccountBuilder implements Builder<Account> {
 
   // get value of Name. Retrieves it from the input if specified or takes it from existingEnt
   getNewNameValue(): string | undefined {
-    return this.input.name || this.existingEnt?.name;
+    if (this.input.name !== undefined) {
+      return this.input.name;
+    }
+    return this.existingEnt?.name;
   }
 
   // get value of PhoneNumber. Retrieves it from the input if specified or takes it from existingEnt
   getNewPhoneNumberValue(): string | undefined {
-    return this.input.phoneNumber || this.existingEnt?.phoneNumber;
+    if (this.input.phoneNumber !== undefined) {
+      return this.input.phoneNumber;
+    }
+    return this.existingEnt?.phoneNumber;
   }
 }

@@ -35,6 +35,7 @@ export class GuestBuilder implements Builder<Guest> {
   readonly placeholderID: ID;
   readonly ent = Guest;
   private input: GuestInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -44,19 +45,19 @@ export class GuestBuilder implements Builder<Guest> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Guest`;
     this.input = action.getInput();
+    const updateInput = (d: GuestInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "guests",
       key: "id",
       loaderOptions: Guest.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -70,6 +71,16 @@ export class GuestBuilder implements Builder<Guest> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   // this gets the inputs that have been written for a given edgeType and operation
@@ -193,17 +204,17 @@ export class GuestBuilder implements Builder<Guest> {
   }
 
   async editedEnt(): Promise<Guest | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Guest> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -224,26 +235,41 @@ export class GuestBuilder implements Builder<Guest> {
 
   // get value of Name. Retrieves it from the input if specified or takes it from existingEnt
   getNewNameValue(): string | undefined {
-    return this.input.name || this.existingEnt?.name;
+    if (this.input.name !== undefined) {
+      return this.input.name;
+    }
+    return this.existingEnt?.name;
   }
 
   // get value of eventID. Retrieves it from the input if specified or takes it from existingEnt
   getNewEventIDValue(): ID | Builder<Event> | undefined {
-    return this.input.eventID || this.existingEnt?.eventID;
+    if (this.input.eventID !== undefined) {
+      return this.input.eventID;
+    }
+    return this.existingEnt?.eventID;
   }
 
   // get value of EmailAddress. Retrieves it from the input if specified or takes it from existingEnt
   getNewEmailAddressValue(): string | null | undefined {
-    return this.input.emailAddress || this.existingEnt?.emailAddress;
+    if (this.input.emailAddress !== undefined) {
+      return this.input.emailAddress;
+    }
+    return this.existingEnt?.emailAddress;
   }
 
   // get value of guestGroupID. Retrieves it from the input if specified or takes it from existingEnt
   getNewGuestGroupIDValue(): ID | Builder<GuestGroup> | undefined {
-    return this.input.guestGroupID || this.existingEnt?.guestGroupID;
+    if (this.input.guestGroupID !== undefined) {
+      return this.input.guestGroupID;
+    }
+    return this.existingEnt?.guestGroupID;
   }
 
   // get value of title. Retrieves it from the input if specified or takes it from existingEnt
   getNewTitleValue(): string | null | undefined {
-    return this.input.title || this.existingEnt?.title;
+    if (this.input.title !== undefined) {
+      return this.input.title;
+    }
+    return this.existingEnt?.title;
   }
 }

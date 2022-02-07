@@ -27,7 +27,7 @@ import {
 } from "./base";
 
 import { applyPrivacyPolicy, applyPrivacyPolicyX } from "./privacy";
-import { Executor } from "../action";
+import { Executor } from "../action/action";
 
 import * as clause from "./clause";
 import { WriteOperation, Builder } from "../action";
@@ -534,7 +534,7 @@ export function buildGroupQuery(
   ];
 }
 
-export interface DataOperation {
+export interface DataOperation<T extends Ent = Ent> {
   // any data that needs to be fetched before the write should be fetched here
   // because of how SQLite works, we can't use asynchronous fetches during the write
   // so we batch up fetching to be done beforehand here
@@ -544,24 +544,31 @@ export interface DataOperation {
   performWriteSync(queryer: SyncQueryer, context?: Context): void;
   performWrite(queryer: Queryer, context?: Context): Promise<void>;
 
-  returnedEntRow?(): Data | null; // optional to indicate the row that was created
+  placeholderID?: ID;
+  returnedRow?(): Data | null; // optional to get the raw row
+  createdEnt?(viewer: Viewer): T | null; // optional to indicate the ent that was created
   resolve?(executor: Executor): void; //throws?
 
   // any data that needs to be fetched asynchronously post write|post transaction
   postFetch?(queryer: Queryer, context?: Context): Promise<void>;
 }
 
-export interface EditNodeOptions extends EditRowOptions {
+export interface EditNodeOptions<T extends Ent> extends EditRowOptions {
   fieldsToResolve: string[];
+  ent: EntConstructor<T>;
+  placeholderID?: ID;
 }
 
-export class EditNodeOperation implements DataOperation {
+export class EditNodeOperation<T extends Ent> implements DataOperation {
   row: Data | null;
+  placeholderID?: ID | undefined;
 
   constructor(
-    public options: EditNodeOptions,
+    public options: EditNodeOptions<T>,
     private existingEnt: Ent | null = null,
-  ) {}
+  ) {
+    this.placeholderID = options.placeholderID;
+  }
 
   resolve<T extends Ent>(executor: Executor): void {
     if (!this.options.fieldsToResolve.length) {
@@ -587,24 +594,35 @@ export class EditNodeOperation implements DataOperation {
     this.options.fields = fields;
   }
 
+  private hasData(data: Data) {
+    for (const _k in data) {
+      return true;
+    }
+    return false;
+  }
+
   async performWrite(queryer: Queryer, context?: Context): Promise<void> {
     let options = {
       ...this.options,
       context,
     };
     if (this.existingEnt) {
-      this.row = await editRow(
-        queryer,
-        options,
-        this.existingEnt.id,
-        "RETURNING *",
-      );
+      if (this.hasData(options.fields)) {
+        this.row = await editRow(
+          queryer,
+          options,
+          this.existingEnt.id,
+          "RETURNING *",
+        );
+      } else {
+        this.row = this.existingEnt["data"];
+      }
     } else {
       this.row = await createRow(queryer, options, "RETURNING *");
     }
   }
 
-  reloadRow(queryer: SyncQueryer, id: ID, options: EditNodeOptions) {
+  private reloadRow(queryer: SyncQueryer, id: ID, options: EditNodeOptions<T>) {
     const query = buildQuery({
       fields: ["*"],
       tableName: options.tableName,
@@ -627,8 +645,12 @@ export class EditNodeOperation implements DataOperation {
       context,
     };
     if (this.existingEnt) {
-      editRowSync(queryer, options, this.existingEnt.id, "RETURNING *");
-      this.reloadRow(queryer, this.existingEnt.id, options);
+      if (this.hasData(this.options.fields)) {
+        editRowSync(queryer, options, this.existingEnt.id, "RETURNING *");
+        this.reloadRow(queryer, this.existingEnt.id, options);
+      } else {
+        this.row = this.existingEnt["data"];
+      }
     } else {
       createRowSync(queryer, options, "RETURNING *");
       const id = options.fields[options.key];
@@ -636,8 +658,15 @@ export class EditNodeOperation implements DataOperation {
     }
   }
 
-  returnedEntRow(): Data | null {
+  returnedRow(): Data | null {
     return this.row;
+  }
+
+  createdEnt(viewer: Viewer): T | null {
+    if (!this.row) {
+      return null;
+    }
+    return new this.options.ent(viewer, this.row);
   }
 }
 

@@ -13,10 +13,13 @@ import {
   saveBuilder,
   saveBuilderX,
 } from "@snowtop/ent/action";
-import { Holiday } from "../../..";
+import { DayOfWeek, DayOfWeekAlt, Holiday } from "../../..";
+import { NodeType } from "../../../generated/const";
 import schema from "../../../../schema/holiday";
 
 export interface HolidayInput {
+  dayOfWeek?: DayOfWeek;
+  dayOfWeekAlt?: DayOfWeekAlt | null;
   label?: string;
   date?: Date;
 }
@@ -33,7 +36,9 @@ export class HolidayBuilder implements Builder<Holiday> {
   orchestrator: Orchestrator<Holiday>;
   readonly placeholderID: ID;
   readonly ent = Holiday;
+  readonly nodeType = NodeType.Holiday;
   private input: HolidayInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -43,19 +48,19 @@ export class HolidayBuilder implements Builder<Holiday> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Holiday`;
     this.input = action.getInput();
+    const updateInput = (d: HolidayInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "holidays",
       key: "id",
       loaderOptions: Holiday.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -69,6 +74,16 @@ export class HolidayBuilder implements Builder<Holiday> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<Holiday>> {
@@ -92,23 +107,25 @@ export class HolidayBuilder implements Builder<Holiday> {
   }
 
   async editedEnt(): Promise<Holiday | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Holiday> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
         result.set(key, value);
       }
     };
+    addField("dayOfWeek", fields.dayOfWeek);
+    addField("dayOfWeekAlt", fields.dayOfWeekAlt);
     addField("label", fields.label);
     addField("date", fields.date);
     return result;
@@ -118,13 +135,35 @@ export class HolidayBuilder implements Builder<Holiday> {
     return (node as Builder<Ent>).placeholderID !== undefined;
   }
 
+  // get value of dayOfWeek. Retrieves it from the input if specified or takes it from existingEnt
+  getNewDayOfWeekValue(): DayOfWeek | undefined {
+    if (this.input.dayOfWeek !== undefined) {
+      return this.input.dayOfWeek;
+    }
+    return this.existingEnt?.dayOfWeek;
+  }
+
+  // get value of dayOfWeekAlt. Retrieves it from the input if specified or takes it from existingEnt
+  getNewDayOfWeekAltValue(): DayOfWeekAlt | null | undefined {
+    if (this.input.dayOfWeekAlt !== undefined) {
+      return this.input.dayOfWeekAlt;
+    }
+    return this.existingEnt?.dayOfWeekAlt;
+  }
+
   // get value of label. Retrieves it from the input if specified or takes it from existingEnt
   getNewLabelValue(): string | undefined {
-    return this.input.label || this.existingEnt?.label;
+    if (this.input.label !== undefined) {
+      return this.input.label;
+    }
+    return this.existingEnt?.label;
   }
 
   // get value of date. Retrieves it from the input if specified or takes it from existingEnt
   getNewDateValue(): Date | undefined {
-    return this.input.date || this.existingEnt?.date;
+    if (this.input.date !== undefined) {
+      return this.input.date;
+    }
+    return this.existingEnt?.date;
   }
 }

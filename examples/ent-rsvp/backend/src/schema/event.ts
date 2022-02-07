@@ -22,7 +22,7 @@ export default class Event extends BaseEntSchema {
   actions: Action[] = [
     {
       operation: ActionOperation.Create,
-      fields: ["Name", "Slug"],
+      excludedFields: ["creatorID"],
       actionOnlyFields: [
         {
           name: "activities",
@@ -30,6 +30,7 @@ export default class Event extends BaseEntSchema {
           nullable: true,
           type: "Object",
           actionName: "CreateEventActivityAction",
+          excludedFields: ["eventID"],
         },
       ],
     },

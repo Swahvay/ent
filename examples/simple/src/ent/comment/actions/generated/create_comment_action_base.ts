@@ -16,11 +16,11 @@ import {
   Changeset,
   WriteOperation,
 } from "@snowtop/ent/action";
-import { Comment } from "../../..";
+import { Comment, User } from "../../..";
 import { CommentBuilder, CommentInput } from "./comment_builder";
 
 export interface CommentCreateInput {
-  authorID: ID;
+  authorID: ID | Builder<User>;
   body: string;
   articleID: ID | Builder<Ent>;
   articleType: string;
@@ -59,19 +59,19 @@ export class CreateCommentActionBase implements Action<Comment> {
 
   async save(): Promise<Comment | null> {
     await this.builder.save();
-    return await this.builder.editedEnt();
+    return this.builder.editedEnt();
   }
 
   async saveX(): Promise<Comment> {
     await this.builder.saveX();
-    return await this.builder.editedEntX();
+    return this.builder.editedEntX();
   }
 
   static create<T extends CreateCommentActionBase>(
     this: new (viewer: Viewer, input: CommentCreateInput) => T,
     viewer: Viewer,
     input: CommentCreateInput,
-  ): CreateCommentActionBase {
+  ): T {
     return new this(viewer, input);
   }
 }

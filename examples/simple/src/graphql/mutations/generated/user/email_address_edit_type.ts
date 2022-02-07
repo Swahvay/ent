@@ -34,6 +34,7 @@ export const EmailAddressEditInputType = new GraphQLInputObjectType({
   name: "EmailAddressEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     userID: {
+      description: "id of User",
       type: GraphQLNonNull(GraphQLID),
     },
     newEmail: {
@@ -72,7 +73,7 @@ export const EmailAddressEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<EmailAddressEditPayload> => {
-    let user = await EditEmailAddressAction.saveXFromID(
+    const user = await EditEmailAddressAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.userID),
       {

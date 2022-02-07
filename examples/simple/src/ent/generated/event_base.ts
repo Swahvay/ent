@@ -5,13 +5,11 @@
 
 import {
   AllowIfViewerPrivacyPolicy,
-  AssocEdge,
   Context,
   CustomQuery,
   Data,
   ID,
   LoadEntOptions,
-  ObjectLoaderFactory,
   PrivacyPolicy,
   Viewer,
   convertDate,
@@ -24,7 +22,9 @@ import {
   loadEnts,
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
+import { eventLoader, eventLoaderInfo } from "./loaders";
 import {
+  Address,
   EdgeType,
   EventToAttendingQuery,
   EventToDeclinedQuery,
@@ -35,18 +35,6 @@ import {
   User,
 } from "../internal";
 import schema from "../../schema/event";
-
-const tableName = "events";
-const fields = [
-  "id",
-  "created_at",
-  "updated_at",
-  "name",
-  "user_id",
-  "start_time",
-  "end_time",
-  "location",
-];
 
 export enum EventRsvpStatus {
   Attending = "attending",
@@ -65,6 +53,7 @@ export class EventBase {
   readonly startTime: Date;
   readonly endTime: Date | null;
   readonly location: string;
+  readonly addressID: ID | null;
 
   constructor(public viewer: Viewer, protected data: Data) {
     this.id = data.id;
@@ -75,6 +64,7 @@ export class EventBase {
     this.startTime = convertDate(data.start_time);
     this.endTime = convertNullableDate(data.end_time);
     this.location = data.location;
+    this.addressID = data.address_id;
   }
 
   privacyPolicy: PrivacyPolicy = AllowIfViewerPrivacyPolicy;
@@ -140,7 +130,7 @@ export class EventBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await eventLoader.createLoader(context).load(id);
+    return eventLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends EventBase>(
@@ -159,8 +149,8 @@ export class EventBase {
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName: eventLoaderInfo.tableName,
+      fields: eventLoaderInfo.fields,
       ent: this,
       loaderFactory: eventLoader,
     };
@@ -224,6 +214,13 @@ export class EventBase {
     return EventToMaybeQuery.query(this.viewer, this.id);
   }
 
+  async loadAddress(): Promise<Address | null> {
+    if (!this.addressID) {
+      return null;
+    }
+    return loadEnt(this.viewer, this.addressID, Address.loaderOptions());
+  }
+
   async loadCreator(): Promise<User | null> {
     return loadEnt(this.viewer, this.creatorID, User.loaderOptions());
   }
@@ -232,9 +229,3 @@ export class EventBase {
     return loadEntX(this.viewer, this.creatorID, User.loaderOptions());
   }
 }
-
-export const eventLoader = new ObjectLoaderFactory({
-  tableName,
-  fields,
-  key: "id",
-});

@@ -23,15 +23,17 @@ export enum WriteOperation {
 }
 
 export interface Builder<T extends Ent> {
-  existingEnt?: Ent;
+  existingEnt?: T;
   ent: EntConstructor<T>;
   placeholderID: ID;
   readonly viewer: Viewer;
   build(): Promise<Changeset<T>>;
   operation: WriteOperation;
   editedEnt?(): Promise<T | null>;
+  nodeType: string;
 }
 
+// NB: this is a private API subject to change
 export interface Executor
   extends Iterable<DataOperation>,
     Iterator<DataOperation> {
@@ -39,6 +41,14 @@ export interface Executor
   // this returns a non-privacy checked "ent"
   resolveValue(val: any): Ent | null;
   execute(): Promise<void>;
+
+  // TODO add this so we can differentiate btw when ops are being executed?
+  // vs gathered for other use
+  // or change how execute() works?
+  // right now have to reset at the end of next() if we call for (const op of executor) {}
+  // also want to throw if DataOperation.returnedRow or DataOperation.createdEnt
+  // called too early
+  //  getSortedOps(): DataOperation[];
 
   // these 3 are to help chained/contained executors
   preFetch?(queryer: Queryer, context?: Context): Promise<void>;
@@ -50,9 +60,9 @@ export interface Changeset<T extends Ent> {
   executor(): Executor;
   viewer: Viewer;
   placeholderID: ID;
-  ent: EntConstructor<T>;
+  //  ent: EntConstructor<T>;
   changesets?: Changeset<Ent>[];
-  dependencies?: Map<ID, Builder<T>>;
+  dependencies?: Map<ID, Builder<Ent>>;
 }
 
 export type TriggerReturn =
@@ -63,15 +73,21 @@ export type TriggerReturn =
 export interface Trigger<T extends Ent> {
   // TODO: way in the future. detect any writes happening in changesets and optionally throw if configured to do so
   // can throw if it wants. not expected to throw tho.
+  // input passed in here !== builder.getInput()
+  // builder.getInput() can have other default fields
   changeset(builder: Builder<T>, input: Data): TriggerReturn;
 }
 
 export interface Observer<T extends Ent> {
+  // input passed in here !== builder.getInput()
+  // builder.getInput() can have other default fields
   observe(builder: Builder<T>, input: Data): void | Promise<void>;
 }
 
 export interface Validator<T extends Ent> {
   // can throw if it wants
+  // input passed in here !== builder.getInput()
+  // builder.getInput() can have other default fields
   validate(builder: Builder<T>, input: Data): Promise<void> | void;
 }
 

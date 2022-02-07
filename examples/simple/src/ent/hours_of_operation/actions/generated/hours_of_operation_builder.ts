@@ -14,13 +14,14 @@ import {
   saveBuilderX,
 } from "@snowtop/ent/action";
 import { DayOfWeek, DayOfWeekAlt, HoursOfOperation } from "../../..";
+import { NodeType } from "../../../generated/const";
 import schema from "../../../../schema/hours_of_operation";
 
 export interface HoursOfOperationInput {
   dayOfWeek?: DayOfWeek;
+  dayOfWeekAlt?: DayOfWeekAlt | null;
   open?: string;
   close?: string;
-  dayOfWeekAlt?: DayOfWeekAlt | null;
 }
 
 export interface HoursOfOperationAction extends Action<HoursOfOperation> {
@@ -35,7 +36,9 @@ export class HoursOfOperationBuilder implements Builder<HoursOfOperation> {
   orchestrator: Orchestrator<HoursOfOperation>;
   readonly placeholderID: ID;
   readonly ent = HoursOfOperation;
+  readonly nodeType = NodeType.HoursOfOperation;
   private input: HoursOfOperationInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -45,19 +48,20 @@ export class HoursOfOperationBuilder implements Builder<HoursOfOperation> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-HoursOfOperation`;
     this.input = action.getInput();
+    const updateInput = (d: HoursOfOperationInput) =>
+      this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "hours_of_operations",
       key: "id",
       loaderOptions: HoursOfOperation.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -71,6 +75,16 @@ export class HoursOfOperationBuilder implements Builder<HoursOfOperation> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<HoursOfOperation>> {
@@ -94,17 +108,17 @@ export class HoursOfOperationBuilder implements Builder<HoursOfOperation> {
   }
 
   async editedEnt(): Promise<HoursOfOperation | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<HoursOfOperation> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -112,9 +126,9 @@ export class HoursOfOperationBuilder implements Builder<HoursOfOperation> {
       }
     };
     addField("dayOfWeek", fields.dayOfWeek);
+    addField("dayOfWeekAlt", fields.dayOfWeekAlt);
     addField("open", fields.open);
     addField("close", fields.close);
-    addField("dayOfWeekAlt", fields.dayOfWeekAlt);
     return result;
   }
 
@@ -124,21 +138,33 @@ export class HoursOfOperationBuilder implements Builder<HoursOfOperation> {
 
   // get value of dayOfWeek. Retrieves it from the input if specified or takes it from existingEnt
   getNewDayOfWeekValue(): DayOfWeek | undefined {
-    return this.input.dayOfWeek || this.existingEnt?.dayOfWeek;
-  }
-
-  // get value of open. Retrieves it from the input if specified or takes it from existingEnt
-  getNewOpenValue(): string | undefined {
-    return this.input.open || this.existingEnt?.open;
-  }
-
-  // get value of close. Retrieves it from the input if specified or takes it from existingEnt
-  getNewCloseValue(): string | undefined {
-    return this.input.close || this.existingEnt?.close;
+    if (this.input.dayOfWeek !== undefined) {
+      return this.input.dayOfWeek;
+    }
+    return this.existingEnt?.dayOfWeek;
   }
 
   // get value of dayOfWeekAlt. Retrieves it from the input if specified or takes it from existingEnt
   getNewDayOfWeekAltValue(): DayOfWeekAlt | null | undefined {
-    return this.input.dayOfWeekAlt || this.existingEnt?.dayOfWeekAlt;
+    if (this.input.dayOfWeekAlt !== undefined) {
+      return this.input.dayOfWeekAlt;
+    }
+    return this.existingEnt?.dayOfWeekAlt;
+  }
+
+  // get value of open. Retrieves it from the input if specified or takes it from existingEnt
+  getNewOpenValue(): string | undefined {
+    if (this.input.open !== undefined) {
+      return this.input.open;
+    }
+    return this.existingEnt?.open;
+  }
+
+  // get value of close. Retrieves it from the input if specified or takes it from existingEnt
+  getNewCloseValue(): string | undefined {
+    if (this.input.close !== undefined) {
+      return this.input.close;
+    }
+    return this.existingEnt?.close;
   }
 }

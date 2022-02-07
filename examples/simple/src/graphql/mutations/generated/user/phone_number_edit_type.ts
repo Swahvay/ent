@@ -34,6 +34,7 @@ export const PhoneNumberEditInputType = new GraphQLInputObjectType({
   name: "PhoneNumberEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     userID: {
+      description: "id of User",
       type: GraphQLNonNull(GraphQLID),
     },
     newPhoneNumber: {
@@ -72,7 +73,7 @@ export const PhoneNumberEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<PhoneNumberEditPayload> => {
-    let user = await EditPhoneNumberAction.saveXFromID(
+    const user = await EditPhoneNumberAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.userID),
       {

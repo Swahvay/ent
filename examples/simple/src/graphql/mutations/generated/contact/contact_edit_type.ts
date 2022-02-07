@@ -9,13 +9,17 @@ import {
   GraphQLID,
   GraphQLInputFieldConfigMap,
   GraphQLInputObjectType,
+  GraphQLList,
   GraphQLNonNull,
   GraphQLObjectType,
   GraphQLResolveInfo,
   GraphQLString,
 } from "graphql";
 import { RequestContext } from "@snowtop/ent";
-import { mustDecodeIDFromGQLID } from "@snowtop/ent/graphql";
+import {
+  mustDecodeIDFromGQLID,
+  mustDecodeNullableIDFromGQLID,
+} from "@snowtop/ent/graphql";
 import { Contact } from "../../../../ent";
 import EditContactAction, {
   ContactEditInput,
@@ -24,7 +28,7 @@ import { ContactType } from "../../../resolvers";
 
 interface customContactEditInput extends ContactEditInput {
   contactID: string;
-  userID: string;
+  userID?: string;
 }
 
 interface ContactEditPayload {
@@ -35,10 +39,14 @@ export const ContactEditInputType = new GraphQLInputObjectType({
   name: "ContactEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     contactID: {
+      description: "id of Contact",
       type: GraphQLNonNull(GraphQLID),
     },
-    emailAddress: {
-      type: GraphQLString,
+    emailIds: {
+      type: GraphQLList(GraphQLNonNull(GraphQLID)),
+    },
+    phoneNumberIds: {
+      type: GraphQLList(GraphQLNonNull(GraphQLID)),
     },
     firstName: {
       type: GraphQLString,
@@ -79,13 +87,15 @@ export const ContactEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<ContactEditPayload> => {
-    let contact = await EditContactAction.saveXFromID(
+    const contact = await EditContactAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.contactID),
       {
-        emailAddress: input.emailAddress,
+        emailIds: input.emailIds,
+        phoneNumberIds: input.phoneNumberIds,
         firstName: input.firstName,
         lastName: input.lastName,
+        userID: mustDecodeNullableIDFromGQLID(input.userID),
       },
     );
     return { contact: contact };

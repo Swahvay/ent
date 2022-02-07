@@ -1,14 +1,18 @@
+import { DateTime } from "luxon";
+import { snakeCase } from "snake-case";
+import { camelCase } from "camel-case";
+import { Ent } from "../core/base";
+import { Builder } from "../action/action";
+import DB, { Dialect } from "../core/db";
 import {
-  Type,
   DBType,
   Field,
   FieldOptions,
-  PolymorphicOptions,
   ForeignKey,
+  PolymorphicOptions,
+  Type,
 } from "./schema";
-import { snakeCase } from "snake-case";
-import { DateTime } from "luxon";
-import DB, { Dialect } from "../core/db";
+import { types } from "util";
 
 export abstract class BaseField {
   name: string;
@@ -47,7 +51,7 @@ export abstract class BaseField {
 export class UUIDField extends BaseField implements Field {
   type: Type = { dbType: DBType.UUID };
 
-  constructor(options: FieldOptions) {
+  constructor(private options: FieldOptions) {
     super();
 
     const polymorphic = options.polymorphic;
@@ -90,6 +94,41 @@ export class UUIDField extends BaseField implements Field {
         ];
       }
     }
+
+    if (
+      options.fieldEdge?.enforceSchema &&
+      !options.fieldEdge.getLoaderInfoFromSchema
+    ) {
+      throw new Error(
+        `cannot enforceSchema if getLoaderInfoFromSchema wasn't passed in`,
+      );
+    }
+  }
+
+  private isBuilder(val: Builder<Ent> | any): val is Builder<Ent> {
+    return (val as Builder<Ent>).placeholderID !== undefined;
+  }
+
+  async valid(val: any) {
+    if (!this.options.fieldEdge?.enforceSchema) {
+      return true;
+    }
+
+    const getLoaderInfo = this.options.fieldEdge.getLoaderInfoFromSchema!;
+    const loaderInfo = getLoaderInfo(this.options.fieldEdge.schema);
+    if (!loaderInfo) {
+      throw new Error(
+        `couldn't get loaderInfo for ${this.options.fieldEdge.schema}`,
+      );
+    }
+    if (this.isBuilder(val)) {
+      // if builder, the nodeType of the builder and the nodeType of the loaderInfo should match
+      return val.nodeType === loaderInfo.nodeType;
+    }
+    // TODO we need context here to make sure that we hit local cache
+
+    const row = await loaderInfo.loaderFactory.createLoader().load(val);
+    return row !== null;
   }
 }
 
@@ -98,12 +137,66 @@ export function UUIDType(options: FieldOptions): UUIDField {
   return Object.assign(result, options);
 }
 
-export class IntegerField extends BaseField implements Field {
-  type: Type = { dbType: DBType.Int };
+export interface IntegerOptions extends FieldOptions {
+  min?: number;
+  max?: number;
 }
 
-export function IntegerType(options: FieldOptions): IntegerField {
-  let result = new IntegerField();
+export class IntegerField extends BaseField implements Field {
+  type: Type = { dbType: DBType.Int };
+  private validators: { (str: number): boolean }[] = [];
+  private options: IntegerOptions = { name: "field" };
+
+  constructor(options?: IntegerOptions) {
+    super();
+    // for legacy callers
+    this.handleOptions(options || this.options);
+  }
+
+  getOptions(): IntegerOptions {
+    return this.options;
+  }
+
+  private handleOptions(options: IntegerOptions) {
+    const params = {
+      min: this.min,
+      max: this.max,
+    };
+
+    for (const k in params) {
+      const v = options[k];
+      if (v !== undefined) {
+        params[k].apply(this, [v]);
+      }
+    }
+    this.options = options;
+  }
+
+  min(l: number): this {
+    return this.validate((val) => val >= l);
+  }
+
+  max(l: number): this {
+    return this.validate((val) => val <= l);
+  }
+
+  valid(val: any): boolean {
+    for (const validator of this.validators) {
+      if (!validator(val)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  validate(validator: (str: number) => boolean): this {
+    this.validators.push(validator);
+    return this;
+  }
+}
+
+export function IntegerType(options: IntegerOptions): IntegerField {
+  let result = new IntegerField(options);
   return Object.assign(result, options);
 }
 
@@ -151,6 +244,7 @@ export class StringField extends BaseField implements Field {
   type: Type = { dbType: DBType.String };
   private validators: { (str: string): boolean }[] = [];
   private formatters: { (str: string): string }[] = [];
+  private options: StringOptions = { name: "field" };
 
   constructor(options?: StringOptions) {
     super();
@@ -159,7 +253,7 @@ export class StringField extends BaseField implements Field {
   }
 
   getOptions(): StringOptions {
-    return this.getOptions;
+    return this.options;
   }
 
   private handleOptions(options: StringOptions) {
@@ -190,15 +284,16 @@ export class StringField extends BaseField implements Field {
         noParams[k].apply(this);
       }
     }
+    this.options = options;
   }
 
-  minLen(l: number): StringField {
+  minLen(l: number): this {
     return this.validate((val) => {
       return val.length >= l;
     });
   }
 
-  maxLen(l: number): StringField {
+  maxLen(l: number): this {
     return this.validate((val) => val.length <= l);
   }
 
@@ -225,47 +320,47 @@ export class StringField extends BaseField implements Field {
     return val;
   }
 
-  validate(validator: (str: string) => boolean): StringField {
+  validate(validator: (str: string) => boolean): this {
     this.validators.push(validator);
     return this;
   }
 
-  formatter(formatter: (str: string) => string): StringField {
+  formatter(formatter: (str: string) => string): this {
     this.formatters.push(formatter);
     return this;
   }
 
-  match(pattern: string | RegExp): StringField {
+  match(pattern: string | RegExp): this {
     return this.validate(function (str: string): boolean {
       let r = new RegExp(pattern);
       return r.test(str);
     });
   }
 
-  doesNotMatch(pattern: string | RegExp): StringField {
+  doesNotMatch(pattern: string | RegExp): this {
     return this.validate(function (str: string): boolean {
       let r = new RegExp(pattern);
       return !r.test(str);
     });
   }
 
-  toLowerCase(): StringField {
+  toLowerCase(): this {
     return this.formatter((str) => str.toLowerCase());
   }
 
-  toUpperCase(): StringField {
+  toUpperCase(): this {
     return this.formatter((str) => str.toUpperCase());
   }
 
-  trim(): StringField {
+  trim(): this {
     return this.formatter((str) => str.trim());
   }
 
-  trimLeft(): StringField {
+  trimLeft(): this {
     return this.formatter((str) => str.trimLeft());
   }
 
-  trimRight(): StringField {
+  trimRight(): this {
     return this.formatter((str) => str.trimRight());
   }
 }
@@ -594,7 +689,7 @@ export class ListField extends BaseField {
     return this;
   }
 
-  valid(val: any): boolean {
+  async valid(val: any) {
     if (!Array.isArray(val)) {
       return false;
     }
@@ -603,15 +698,27 @@ export class ListField extends BaseField {
         return false;
       }
     }
-    if (!this.field.valid) {
+    const valid = this.field.valid;
+    if (!valid) {
       return true;
     }
-    for (const v of val) {
-      if (!this.field.valid(v)) {
-        return false;
-      }
+    const res = valid.apply(this.field, [val[0]]);
+    if (types.isPromise(res)) {
+      const ret = await Promise.all(
+        val.map(async (v) => await valid.apply(this.field, [v])),
+      );
+      return ret.every((v) => v);
     }
-    return true;
+    const ret = val.map((v) => valid.apply(this.field, [v]));
+    const result = ret.every((v) => v);
+    return result;
+  }
+
+  private postgresVal(val: any, jsonType?: boolean) {
+    if (!jsonType) {
+      return val;
+    }
+    return JSON.stringify(val);
   }
 
   format(val: any): any {
@@ -619,19 +726,37 @@ export class ListField extends BaseField {
       throw new Error(`need an array to format`);
     }
 
-    if (this.field.format) {
-      for (let i = 0; i < val.length; i++) {
-        val[i] = this.field.format(val[i]);
-      }
+    const elemDBType = this.type.listElemType!.dbType;
+    const jsonType = elemDBType === "JSON" || elemDBType === "JSONB";
+    const postgres = DB.getDialect() === Dialect.Postgres;
+
+    if (!postgres && !this.field.format) {
+      return JSON.stringify(val);
     }
 
-    // postgres supports arrays natively so we
-    // structure it in the expected format
-    if (DB.getDialect() === Dialect.Postgres) {
-      return `{${val.join(",")}}`;
+    let ret: any[] = [];
+    let postgresRet: string = "{";
+    for (let i = 0; i < val.length; i++) {
+      let formatted = val[i];
+      if (this.field.format) {
+        formatted = this.field.format(val[i]);
+      }
+
+      // postgres supports arrays natively so we
+      // structure it in the expected format
+      if (postgres) {
+        postgresRet += this.postgresVal(formatted, jsonType);
+        if (i !== val.length - 1) {
+          postgresRet += ",";
+        }
+      } else {
+        ret[i] = formatted;
+      }
     }
-    // For SQLite, we store a JSON string
-    return JSON.stringify(val);
+    if (postgres) {
+      return postgresRet + "}";
+    }
+    return JSON.stringify(ret);
   }
 
   minLen(l: number): this {

@@ -15,6 +15,7 @@ import (
 	"github.com/lolopinto/ent/internal/edge"
 	"github.com/lolopinto/ent/internal/enttype"
 	"github.com/lolopinto/ent/internal/schema/base"
+	"github.com/lolopinto/ent/internal/schema/custominterface"
 	"github.com/lolopinto/ent/internal/schema/enum"
 	"github.com/lolopinto/ent/internal/schema/input"
 
@@ -22,41 +23,13 @@ import (
 	"github.com/lolopinto/ent/internal/field"
 )
 
-type NonEntField struct {
-	FieldName string
-	FieldType enttype.TSGraphQLType
-	Nullable  bool // required default = true
-	// TODO these are both go things. ignore
-	// Flag enum or ID
-	Flag string
-	// this is a go-thing. ignore for TypeScript
-	NodeType string
-}
-
-func (f *NonEntField) Required() bool {
-	return !f.Nullable
-}
-
-func (f *NonEntField) GetGraphQLName() string {
-	return strcase.ToLowerCamel(f.FieldName)
-}
-
-// don't have to deal with all the id field stuff field.Field has to deal with
-func (f *NonEntField) GetTsType() string {
-	return f.FieldType.GetTSType()
-}
-
-func (f *NonEntField) TsFieldName() string {
-	return strcase.ToLowerCamel(f.FieldName)
-}
-
 // no imports for now... since all local fields
 // eventually may need it for e.g. file or something
 // TsBuilderImports
 
 type Action interface {
 	GetFields() []*field.Field
-	GetNonEntFields() []*NonEntField
+	GetNonEntFields() []*field.NonEntField
 	GetEdges() []*edge.AssociationEdge
 	GetEdgeGroup() *edge.AssociationEdgeGroup
 	GetActionName() string
@@ -68,20 +41,22 @@ type Action interface {
 	GetOperation() ent.ActionOperation
 	IsDeletingNode() bool
 	AddCustomField(enttype.TSGraphQLType, *field.Field)
-	AddCustomNonEntField(enttype.TSGraphQLType, *NonEntField)
+	AddCustomNonEntField(enttype.TSGraphQLType, *field.NonEntField)
 	AddCustomInterfaces(a Action)
-	GetCustomInterfaces() []*CustomInterface
+	GetCustomInterfaces() []*custominterface.CustomInterface
 	GetTSEnums() []*enum.Enum
 	GetGQLEnums() []*enum.GQLEnum
 }
 
-type CustomInterface struct {
-	TSType       string
-	GQLType      string
-	Fields       []*field.Field
-	NonEntFields []*NonEntField
-	Action       Action
-	// if present, means that this interface should be imported in GraphQL instead...
+type ActionField interface {
+	GetFieldType() enttype.EntType
+	TsFieldName() string
+	GetGraphQLName() string
+	ForceRequiredInAction() bool
+	ForceOptionalInAction() bool
+	DefaultValue() interface{}
+	Nullable() bool
+	HasDefaultValueOnCreate() bool
 }
 
 type ActionInfo struct {
@@ -139,11 +114,11 @@ type commonActionInfo struct {
 	InputName        string
 	GraphQLName      string
 	Fields           []*field.Field
-	NonEntFields     []*NonEntField
+	NonEntFields     []*field.NonEntField
 	Edges            []*edge.AssociationEdge // for edge actions for now but eventually other actions
 	EdgeGroup        *edge.AssociationEdgeGroup
 	Operation        ent.ActionOperation
-	customInterfaces map[string]*CustomInterface
+	customInterfaces map[string]*custominterface.CustomInterface
 	tsEnums          []*enum.Enum
 	gqlEnums         []*enum.GQLEnum
 	nodeinfo.NodeInfo
@@ -177,7 +152,7 @@ func (action *commonActionInfo) GetEdgeGroup() *edge.AssociationEdgeGroup {
 	return action.EdgeGroup
 }
 
-func (action *commonActionInfo) GetNonEntFields() []*NonEntField {
+func (action *commonActionInfo) GetNonEntFields() []*field.NonEntField {
 	return action.NonEntFields
 }
 
@@ -207,16 +182,16 @@ func getTypes(typ enttype.TSGraphQLType) (string, string) {
 	return tsTyp, gqlType
 }
 
-func (action *commonActionInfo) getCustomInterface(typ enttype.TSGraphQLType) *CustomInterface {
+func (action *commonActionInfo) getCustomInterface(typ enttype.TSGraphQLType) *custominterface.CustomInterface {
 	if action.customInterfaces == nil {
-		action.customInterfaces = make(map[string]*CustomInterface)
+		action.customInterfaces = make(map[string]*custominterface.CustomInterface)
 	}
 
 	tsTyp, gqlType := getTypes(typ)
 
 	ci, ok := action.customInterfaces[tsTyp]
 	if !ok {
-		ci = &CustomInterface{
+		ci = &custominterface.CustomInterface{
 			TSType:  tsTyp,
 			GQLType: gqlType,
 		}
@@ -228,9 +203,14 @@ func (action *commonActionInfo) getCustomInterface(typ enttype.TSGraphQLType) *C
 func (action *commonActionInfo) AddCustomField(typ enttype.TSGraphQLType, cf *field.Field) {
 	ci := action.getCustomInterface(typ)
 	ci.Fields = append(ci.Fields, cf)
+	enumType, ok := enttype.GetEnumType(cf.GetFieldType())
+	if !ok {
+		return
+	}
+	ci.AddEnumImport(enumType.GetTSName())
 }
 
-func (action *commonActionInfo) AddCustomNonEntField(typ enttype.TSGraphQLType, cf *NonEntField) {
+func (action *commonActionInfo) AddCustomNonEntField(typ enttype.TSGraphQLType, cf *field.NonEntField) {
 	ci := action.getCustomInterface(typ)
 	ci.NonEntFields = append(ci.NonEntFields, cf)
 }
@@ -244,11 +224,11 @@ func (action *commonActionInfo) AddCustomNonEntField(typ enttype.TSGraphQLType, 
 // This choice isn't consistent but is the easiest path so doing that
 func (action *commonActionInfo) AddCustomInterfaces(a2 Action) {
 	if action.customInterfaces == nil {
-		action.customInterfaces = make(map[string]*CustomInterface)
+		action.customInterfaces = make(map[string]*custominterface.CustomInterface)
 	}
 	for _, inter := range a2.GetCustomInterfaces() {
 		// don't add to graphql
-		action.customInterfaces[inter.TSType] = &CustomInterface{
+		action.customInterfaces[inter.TSType] = &custominterface.CustomInterface{
 			TSType:  inter.TSType,
 			GQLType: inter.GQLType,
 			// this flag indicates that we're going to import this input in graphql
@@ -260,8 +240,8 @@ func (action *commonActionInfo) AddCustomInterfaces(a2 Action) {
 	}
 }
 
-func (action *commonActionInfo) GetCustomInterfaces() []*CustomInterface {
-	var ret []*CustomInterface
+func (action *commonActionInfo) GetCustomInterfaces() []*custominterface.CustomInterface {
+	var ret []*custominterface.CustomInterface
 
 	for _, v := range action.customInterfaces {
 		ret = append(ret, v)
@@ -531,7 +511,7 @@ func GetEdgesFromEdges(edges []*edge.AssociationEdge) []EdgeActionTemplateInfo {
 	return result
 }
 
-func IsRequiredField(action Action, field *field.Field) bool {
+func IsRequiredField(action Action, field ActionField) bool {
 	if field.ForceRequiredInAction() {
 		return true
 	}
@@ -544,7 +524,7 @@ func IsRequiredField(action Action, field *field.Field) bool {
 		return false
 	}
 	// for a nullable field or something with a default value, don't make it required...
-	if field.Nullable() || field.DefaultValue() != nil {
+	if field.Nullable() || field.DefaultValue() != nil || field.HasDefaultValueOnCreate() {
 		return false
 	}
 	return true

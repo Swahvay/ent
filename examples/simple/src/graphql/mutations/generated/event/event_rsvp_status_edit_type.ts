@@ -50,6 +50,7 @@ export const EventRsvpStatusEditInputType = new GraphQLInputObjectType({
   name: "EventRsvpStatusEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     eventID: {
+      description: "id of Event",
       type: GraphQLNonNull(GraphQLID),
     },
     rsvpStatus: {
@@ -91,7 +92,7 @@ export const EventRsvpStatusEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<EventRsvpStatusEditPayload> => {
-    let event = await EditEventRsvpStatusAction.saveXFromID(
+    const event = await EditEventRsvpStatusAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.eventID),
       {

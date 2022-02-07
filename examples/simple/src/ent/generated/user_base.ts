@@ -11,12 +11,12 @@ import {
   Data,
   ID,
   LoadEntOptions,
-  ObjectLoaderFactory,
   PrivacyPolicy,
   Viewer,
   convertBool,
   convertDate,
   convertNullableJSON,
+  convertNullableJSONList,
   convertNullableList,
   loadCustomData,
   loadCustomEnts,
@@ -29,6 +29,12 @@ import {
   loadUniqueNode,
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
+import {
+  userEmailAddressLoader,
+  userLoader,
+  userLoaderInfo,
+  userPhoneNumberLoader,
+} from "./loaders";
 import {
   Contact,
   EdgeType,
@@ -48,30 +54,6 @@ import {
 } from "../internal";
 import { UserPrefs } from "../user_prefs";
 import schema from "../../schema/user";
-
-const tableName = "users";
-const fields = [
-  "id",
-  "created_at",
-  "updated_at",
-  "first_name",
-  "last_name",
-  "email_address",
-  "phone_number",
-  "password",
-  "account_status",
-  "email_verified",
-  "bio",
-  "nicknames",
-  "prefs",
-  "prefs_diff",
-  "days_off",
-  "preferred_shift",
-  "time_in_ms",
-  "fun_uuids",
-  "new_col",
-  "new_col_2",
-];
 
 export enum DaysOff {
   Monday = "monday",
@@ -105,6 +87,7 @@ export class UserBase {
   readonly bio: string | null;
   readonly nicknames: string[] | null;
   readonly prefs: UserPrefs | null;
+  readonly prefsList: UserPrefs[] | null;
   readonly prefsDiff: any;
   readonly daysOff: DaysOff[] | null;
   readonly preferredShift: PreferredShift[] | null;
@@ -127,6 +110,7 @@ export class UserBase {
     this.bio = data.bio;
     this.nicknames = convertNullableList(data.nicknames);
     this.prefs = convertNullableJSON(data.prefs);
+    this.prefsList = convertNullableJSONList(data.prefs_list);
     this.prefsDiff = convertNullableJSON(data.prefs_diff);
     this.daysOff = convertNullableList(data.days_off);
     this.preferredShift = convertNullableList(data.preferred_shift);
@@ -199,7 +183,7 @@ export class UserBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await userLoader.createLoader(context).load(id);
+    return userLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends UserBase>(
@@ -252,9 +236,7 @@ export class UserBase {
     emailAddress: string,
     context?: Context,
   ): Promise<Data | null> {
-    return await userEmailAddressLoader
-      .createLoader(context)
-      .load(emailAddress);
+    return userEmailAddressLoader.createLoader(context).load(emailAddress);
   }
 
   static async loadFromPhoneNumber<T extends UserBase>(
@@ -295,15 +277,15 @@ export class UserBase {
     phoneNumber: string,
     context?: Context,
   ): Promise<Data | null> {
-    return await userPhoneNumberLoader.createLoader(context).load(phoneNumber);
+    return userPhoneNumberLoader.createLoader(context).load(phoneNumber);
   }
 
   static loaderOptions<T extends UserBase>(
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName: userLoaderInfo.tableName,
+      fields: userLoaderInfo.fields,
       ent: this,
       loaderFactory: userLoader,
     };
@@ -387,28 +369,3 @@ export class UserBase {
     return UserToContactsQuery.query(this.viewer, this.id);
   }
 }
-
-export const userLoader = new ObjectLoaderFactory({
-  tableName,
-  fields,
-  key: "id",
-});
-
-export const userEmailAddressLoader = new ObjectLoaderFactory({
-  tableName,
-  fields,
-  key: "email_address",
-});
-
-export const userPhoneNumberLoader = new ObjectLoaderFactory({
-  tableName,
-  fields,
-  key: "phone_number",
-});
-
-userLoader.addToPrime(userEmailAddressLoader);
-userLoader.addToPrime(userPhoneNumberLoader);
-userEmailAddressLoader.addToPrime(userLoader);
-userEmailAddressLoader.addToPrime(userPhoneNumberLoader);
-userPhoneNumberLoader.addToPrime(userLoader);
-userPhoneNumberLoader.addToPrime(userEmailAddressLoader);

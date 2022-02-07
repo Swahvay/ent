@@ -18,7 +18,7 @@ import {
   nodeIDEncoder,
 } from "@snowtop/ent/graphql";
 import { Comment, CommentToPostQuery } from "../../../ent";
-import { CommentToPostConnectionType } from "../internal";
+import { CommentToPostConnectionType, UserType } from "../internal";
 
 export const CommentType = new GraphQLObjectType({
   name: "Comment",
@@ -29,12 +29,15 @@ export const CommentType = new GraphQLObjectType({
         return comment.loadArticle();
       },
     },
+    author: {
+      type: UserType,
+      resolve: (comment: Comment, args: {}, context: RequestContext) => {
+        return comment.loadAuthor();
+      },
+    },
     id: {
       type: GraphQLNonNull(GraphQLID),
       resolve: nodeIDEncoder,
-    },
-    authorID: {
-      type: GraphQLNonNull(GraphQLID),
     },
     body: {
       type: GraphQLNonNull(GraphQLString),

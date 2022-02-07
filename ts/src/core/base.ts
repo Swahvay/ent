@@ -170,6 +170,13 @@ export interface LoadCustomEntOptions<T extends Ent>
   ent: EntConstructor<T>;
 }
 
+export interface LoaderInfo {
+  tableName: string;
+  fields: string[];
+  nodeType: string;
+  loaderFactory: LoaderFactory<any, Data | null>;
+}
+
 // information needed to edit an ent
 export interface EditEntOptions<T extends Ent>
   extends LoadableEntOptions<T>,
@@ -186,6 +193,11 @@ enum privacyResult {
 export interface PrivacyResult {
   result: privacyResult;
   error?: PrivacyError;
+  getError?(
+    policy: PrivacyPolicy,
+    rule: PrivacyPolicyRule,
+    ent?: Ent,
+  ): PrivacyError;
 }
 
 export interface PrivacyError extends Error {
@@ -193,25 +205,57 @@ export interface PrivacyError extends Error {
   ent?: Ent;
 }
 
+const allow: PrivacyResult = {
+  result: privacyResult.Allow,
+};
+
 export function Allow(): PrivacyResult {
-  return {
-    result: privacyResult.Allow,
-  };
+  return allow;
 }
+
+const skip: PrivacyResult = {
+  result: privacyResult.Skip,
+};
 
 export function Skip(): PrivacyResult {
-  return {
-    result: privacyResult.Skip,
-  };
+  return skip;
 }
+
+const deny: PrivacyResult = {
+  result: privacyResult.Deny,
+};
 
 export function Deny(): PrivacyResult {
-  return {
-    result: privacyResult.Deny,
-  };
+  return deny;
 }
 
-export function DenyWithReason(e: PrivacyError): PrivacyResult {
+class DenyWithReasonError extends Error implements PrivacyError {
+  privacyPolicy: PrivacyPolicy;
+  privacyRule: PrivacyPolicyRule;
+  ent?: Ent;
+
+  constructor(
+    privacyPolicy: PrivacyPolicy,
+    rule: PrivacyPolicyRule,
+    msg: string,
+    ent?: Ent,
+  ) {
+    super(msg);
+    this.privacyPolicy = privacyPolicy;
+    this.privacyRule = rule;
+    this.ent = ent;
+  }
+}
+
+export function DenyWithReason(e: PrivacyError | string): PrivacyResult {
+  if (typeof e === "string") {
+    return {
+      result: privacyResult.Deny,
+      getError(policy: PrivacyPolicy, rule: PrivacyPolicyRule, ent?: Ent) {
+        return new DenyWithReasonError(policy, rule, e, ent);
+      },
+    };
+  }
   return {
     result: privacyResult.Deny,
     error: e,

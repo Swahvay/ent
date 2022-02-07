@@ -12,7 +12,7 @@ import {
   Changeset,
   WriteOperation,
 } from "@snowtop/ent/action";
-import { Event, Guest, GuestData } from "src/ent/";
+import { Event, Guest, GuestData, GuestDataSource } from "src/ent/";
 import {
   GuestDataBuilder,
   GuestDataInput,
@@ -22,6 +22,7 @@ export interface GuestDataCreateInput {
   guestID: ID | Builder<Guest>;
   eventID: ID | Builder<Event>;
   dietaryRestrictions: string;
+  source?: GuestDataSource | null;
 }
 
 export class CreateGuestDataActionBase implements Action<GuestData> {
@@ -61,19 +62,19 @@ export class CreateGuestDataActionBase implements Action<GuestData> {
 
   async save(): Promise<GuestData | null> {
     await this.builder.save();
-    return await this.builder.editedEnt();
+    return this.builder.editedEnt();
   }
 
   async saveX(): Promise<GuestData> {
     await this.builder.saveX();
-    return await this.builder.editedEntX();
+    return this.builder.editedEntX();
   }
 
   static create<T extends CreateGuestDataActionBase>(
     this: new (viewer: Viewer, input: GuestDataCreateInput) => T,
     viewer: Viewer,
     input: GuestDataCreateInput,
-  ): CreateGuestDataActionBase {
+  ): T {
     return new this(viewer, input);
   }
 }

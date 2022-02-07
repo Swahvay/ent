@@ -42,19 +42,19 @@ export class TodoBuilder implements Builder<Todo> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Todo`;
     this.input = action.getInput();
+    const updateInput = (d: TodoInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "todos",
       key: "id",
       loaderOptions: Todo.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -138,17 +138,17 @@ export class TodoBuilder implements Builder<Todo> {
   }
 
   async editedEnt(): Promise<Todo | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Todo> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -167,16 +167,25 @@ export class TodoBuilder implements Builder<Todo> {
 
   // get value of Text. Retrieves it from the input if specified or takes it from existingEnt
   getNewTextValue(): string | undefined {
-    return this.input.text || this.existingEnt?.text;
+    if (this.input.text !== undefined) {
+      return this.input.text;
+    }
+    return this.existingEnt?.text;
   }
 
   // get value of Completed. Retrieves it from the input if specified or takes it from existingEnt
   getNewCompletedValue(): boolean | undefined {
-    return this.input.completed || this.existingEnt?.completed;
+    if (this.input.completed !== undefined) {
+      return this.input.completed;
+    }
+    return this.existingEnt?.completed;
   }
 
   // get value of creatorID. Retrieves it from the input if specified or takes it from existingEnt
   getNewCreatorIDValue(): ID | Builder<Account> | undefined {
-    return this.input.creatorID || this.existingEnt?.creatorID;
+    if (this.input.creatorID !== undefined) {
+      return this.input.creatorID;
+    }
+    return this.existingEnt?.creatorID;
   }
 }

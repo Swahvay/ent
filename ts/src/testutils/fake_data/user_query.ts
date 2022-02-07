@@ -27,6 +27,7 @@ import { Interval } from "luxon";
 import { QueryLoaderFactory } from "../../core/loaders/query_loader";
 import { MockDate } from "./../mock_date";
 import { getLoaderOptions } from ".";
+import { AllowIfViewerPrivacyPolicy } from "../../core/privacy";
 
 export class UserToContactsQuery extends AssocEdgeQueryBase<
   FakeUser,
@@ -49,6 +50,10 @@ export class UserToContactsQuery extends AssocEdgeQueryBase<
   ): UserToContactsQuery {
     return new UserToContactsQuery(viewer, src);
   }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
+  }
 }
 
 export const userToContactsCountLoaderFactory = new RawCountLoaderFactory({
@@ -63,7 +68,10 @@ export const userToContactsDataLoaderFactory = new IndexLoaderFactory(
   },
 );
 
-export class UserToContactsFkeyQuery extends CustomEdgeQueryBase<FakeContact> {
+export class UserToContactsFkeyQuery extends CustomEdgeQueryBase<
+  FakeUser,
+  FakeContact
+> {
   constructor(viewer: Viewer, src: ID | FakeUser) {
     super(viewer, {
       src,
@@ -76,6 +84,10 @@ export class UserToContactsFkeyQuery extends CustomEdgeQueryBase<FakeContact> {
 
   static query(viewer: Viewer, src: FakeUser | ID): UserToContactsFkeyQuery {
     return new UserToContactsFkeyQuery(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
   }
 }
 
@@ -99,6 +111,10 @@ export class UserToFriendsQuery extends AssocEdgeQueryBase<
     src: EdgeQuerySource<FakeUser>,
   ): UserToFriendsQuery {
     return new UserToFriendsQuery(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
   }
 
   queryContacts(): UserToContactsQuery {
@@ -151,6 +167,10 @@ export class UserToCustomEdgeQuery extends AssocEdgeQueryBase<
     return new UserToCustomEdgeQuery(viewer, src);
   }
 
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
+  }
+
   queryContacts(): UserToContactsQuery {
     return UserToContactsQuery.query(this.viewer, this);
   }
@@ -190,6 +210,10 @@ export class UserToFriendRequestsQuery extends AssocEdgeQueryBase<
     return new UserToFriendRequestsQuery(viewer, src);
   }
 
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
+  }
+
   queryContacts(): UserToContactsQuery {
     return UserToContactsQuery.query(this.viewer, this);
   }
@@ -216,7 +240,7 @@ export class UserToIncomingFriendRequestsQuery extends AssocEdgeQueryBase<
   FakeUser,
   AssocEdge
 > {
-  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser>) {
+  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser, FakeUser>) {
     super(
       viewer,
       src,
@@ -229,9 +253,17 @@ export class UserToIncomingFriendRequestsQuery extends AssocEdgeQueryBase<
     );
   }
 
+  getPrivacyPolicy() {
+    return AllowIfViewerPrivacyPolicy;
+  }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
+  }
+
   static query(
     viewer: Viewer,
-    src: EdgeQuerySource<FakeUser>,
+    src: EdgeQuerySource<FakeUser, FakeUser>,
   ): UserToIncomingFriendRequestsQuery {
     return new UserToIncomingFriendRequestsQuery(viewer, src);
   }
@@ -262,7 +294,7 @@ export class UserToEventsAttendingQuery extends AssocEdgeQueryBase<
   FakeEvent,
   AssocEdge
 > {
-  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser>) {
+  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser, FakeEvent>) {
     super(
       viewer,
       src,
@@ -274,9 +306,13 @@ export class UserToEventsAttendingQuery extends AssocEdgeQueryBase<
 
   static query(
     viewer: Viewer,
-    src: EdgeQuerySource<FakeUser>,
+    src: EdgeQuerySource<FakeUser, FakeEvent>,
   ): UserToEventsAttendingQuery {
     return new UserToEventsAttendingQuery(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
   }
 
   queryHosts(): EventToHostsQuery {
@@ -301,7 +337,7 @@ export class UserToHostedEventsQuery extends AssocEdgeQueryBase<
   FakeEvent,
   AssocEdge
 > {
-  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser>) {
+  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser, FakeEvent>) {
     super(
       viewer,
       src,
@@ -313,9 +349,13 @@ export class UserToHostedEventsQuery extends AssocEdgeQueryBase<
 
   static query(
     viewer: Viewer,
-    src: EdgeQuerySource<FakeUser>,
+    src: EdgeQuerySource<FakeUser, FakeEvent>,
   ): UserToHostedEventsQuery {
     return new UserToHostedEventsQuery(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
   }
 
   queryHosts(): EventToHostsQuery {
@@ -370,7 +410,10 @@ export const userToEventsInNextWeekDataLoaderFactory = new QueryLoaderFactory({
   sortColumn: "start_time",
 });
 
-export class UserToEventsInNextWeekQuery extends CustomEdgeQueryBase<FakeEvent> {
+export class UserToEventsInNextWeekQuery extends CustomEdgeQueryBase<
+  FakeUser,
+  FakeEvent
+> {
   constructor(viewer: Viewer, src: ID | FakeUser) {
     super(viewer, {
       src,
@@ -389,6 +432,14 @@ export class UserToEventsInNextWeekQuery extends CustomEdgeQueryBase<FakeEvent> 
   ): UserToEventsInNextWeekQuery {
     return new UserToEventsInNextWeekQuery(viewer, src);
   }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
+  }
+
+  getPrivacyPolicy() {
+    return AllowIfViewerPrivacyPolicy;
+  }
 }
 
 export class UserToFollowingQuery extends AssocEdgeQueryBase<
@@ -396,7 +447,7 @@ export class UserToFollowingQuery extends AssocEdgeQueryBase<
   Ent,
   AssocEdge
 > {
-  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser>) {
+  constructor(viewer: Viewer, src: EdgeQuerySource<FakeUser, FakeUser>) {
     super(
       viewer,
       src,
@@ -408,8 +459,12 @@ export class UserToFollowingQuery extends AssocEdgeQueryBase<
 
   static query(
     viewer: Viewer,
-    src: EdgeQuerySource<FakeUser>,
+    src: EdgeQuerySource<FakeUser, FakeUser>,
   ): UserToFollowingQuery {
     return new UserToFollowingQuery(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return FakeUser.load(this.viewer, id);
   }
 }

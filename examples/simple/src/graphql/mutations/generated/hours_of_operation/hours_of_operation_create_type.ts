@@ -34,14 +34,14 @@ export const HoursOfOperationCreateInputType = new GraphQLInputObjectType({
     dayOfWeek: {
       type: GraphQLNonNull(DayOfWeekType),
     },
+    dayOfWeekAlt: {
+      type: DayOfWeekAltType,
+    },
     open: {
       type: GraphQLNonNull(GraphQLString),
     },
     close: {
       type: GraphQLNonNull(GraphQLString),
-    },
-    dayOfWeekAlt: {
-      type: DayOfWeekAltType,
     },
   }),
 });
@@ -76,13 +76,13 @@ export const HoursOfOperationCreateType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<HoursOfOperationCreatePayload> => {
-    let hoursOfOperation = await CreateHoursOfOperationAction.create(
+    const hoursOfOperation = await CreateHoursOfOperationAction.create(
       context.getViewer(),
       {
         dayOfWeek: input.dayOfWeek,
+        dayOfWeekAlt: input.dayOfWeekAlt,
         open: input.open,
         close: input.close,
-        dayOfWeekAlt: input.dayOfWeekAlt,
       },
     ).saveX();
     return { hoursOfOperation: hoursOfOperation };

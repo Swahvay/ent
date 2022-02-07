@@ -13,13 +13,14 @@ import {
   JSONType,
   EnumListType,
   BigIntegerType,
+  JSONBListType,
+  UUIDListType,
 } from "@snowtop/ent/schema";
 import { EmailType } from "@snowtop/ent-email";
 import { PasswordType } from "@snowtop/ent-password";
 import { PhoneNumberType } from "@snowtop/ent-phonenumber";
 import { StringListType } from "@snowtop/ent/schema/field";
 import Feedback from "./patterns/feedback";
-import { UUIDListType } from "../../../../ts/dist";
 
 export default class User extends BaseEntSchema implements Schema {
   constructor() {
@@ -42,16 +43,30 @@ export default class User extends BaseEntSchema implements Schema {
     PasswordType({ name: "Password", nullable: true }),
     // TODO support enums: UNVERIFIED, VERIFIED, DEACTIVATED, DISABLED etc.
     // TODO shouldn't really be nullable. same issue as #35
-    StringType({ name: "AccountStatus", nullable: true }),
+    StringType({
+      name: "AccountStatus",
+      nullable: true,
+      defaultValueOnCreate: () => "UNVERIFIED",
+    }),
     BooleanType({
       name: "emailVerified",
       hideFromGraphQL: true,
       serverDefault: "FALSE",
+      // not needed because we have serverDefault but can also set it here.
+      defaultValueOnCreate: () => false,
     }),
     StringType({ name: "Bio", nullable: true }),
     StringListType({ name: "nicknames", nullable: true }),
     JSONBType({
       name: "prefs",
+      nullable: true,
+      importType: {
+        path: "src/ent/user_prefs",
+        type: "UserPrefs",
+      },
+    }),
+    JSONBListType({
+      name: "prefsList",
       nullable: true,
       importType: {
         path: "src/ent/user_prefs",
@@ -95,17 +110,17 @@ export default class User extends BaseEntSchema implements Schema {
       values: ["morning", "afternoon", "evening", "graveyard"],
     }),
     // Date.now() is too big to store in int so have to use bigint. because of how big bigint could get, have to use BigInt instead of number
-    BigIntegerType({ name: "timeInMs", nullable: true }),
+    BigIntegerType({
+      name: "timeInMs",
+      nullable: true,
+      defaultValueOnCreate: () => BigInt(Date.now()),
+    }),
     UUIDListType({ name: "fun_uuids", nullable: true }),
     StringType({ name: "new_col", nullable: true }),
     StringType({ name: "new_col2", nullable: true }),
   ];
 
   edges: Edge[] = [
-    {
-      name: "createdEvents",
-      schemaName: "Event",
-    },
     {
       name: "friends",
       schemaName: "User",
@@ -122,18 +137,20 @@ export default class User extends BaseEntSchema implements Schema {
     // create user
     {
       operation: ActionOperation.Create,
+      requiredFields: ["PhoneNumber", "Password"],
       fields: [
         "FirstName",
         "LastName",
         "EmailAddress",
-        requiredField("PhoneNumber"),
-        requiredField("Password"),
+        "PhoneNumber",
+        "Password",
         "nicknames",
         "prefs",
         "prefs_diff",
         "daysOff",
         "preferredShift",
         "fun_uuids",
+        "prefsList",
       ],
     },
 

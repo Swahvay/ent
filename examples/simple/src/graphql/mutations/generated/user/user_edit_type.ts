@@ -34,6 +34,7 @@ export const UserEditInputType = new GraphQLInputObjectType({
   name: "UserEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     userID: {
+      description: "id of User",
       type: GraphQLNonNull(GraphQLID),
     },
     firstName: {
@@ -72,7 +73,7 @@ export const UserEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<UserEditPayload> => {
-    let user = await EditUserAction.saveXFromID(
+    const user = await EditUserAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.userID),
       {

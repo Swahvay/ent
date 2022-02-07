@@ -29,6 +29,7 @@ export const EventActivityRemoveInviteInputType = new GraphQLInputObjectType({
   name: "EventActivityRemoveInviteInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     eventActivityID: {
+      description: "id of EventActivity",
       type: GraphQLNonNull(GraphQLID),
     },
     inviteID: {
@@ -67,7 +68,7 @@ export const EventActivityRemoveInviteType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<EventActivityRemoveInvitePayload> => {
-    let eventActivity = await EventActivityRemoveInviteAction.saveXFromID(
+    const eventActivity = await EventActivityRemoveInviteAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.eventActivityID),
       mustDecodeIDFromGQLID(input.inviteID),

@@ -15,15 +15,16 @@ import {
   Changeset,
   WriteOperation,
 } from "@snowtop/ent/action";
-import { Event, User } from "../../..";
+import { Address, Event } from "../../..";
 import { EventBuilder, EventInput } from "./event_builder";
 
 export interface EventEditInput {
   name?: string;
-  creatorID?: ID | Builder<User>;
+  creatorID?: ID;
   startTime?: Date;
   endTime?: Date | null;
   location?: string;
+  addressID?: ID | null | Builder<Address>;
 }
 
 export class EditEventActionBase implements Action<Event> {
@@ -66,12 +67,12 @@ export class EditEventActionBase implements Action<Event> {
 
   async save(): Promise<Event | null> {
     await this.builder.save();
-    return await this.builder.editedEnt();
+    return this.builder.editedEnt();
   }
 
   async saveX(): Promise<Event> {
     await this.builder.saveX();
-    return await this.builder.editedEntX();
+    return this.builder.editedEntX();
   }
 
   static create<T extends EditEventActionBase>(
@@ -79,7 +80,7 @@ export class EditEventActionBase implements Action<Event> {
     viewer: Viewer,
     event: Event,
     input: EventEditInput,
-  ): EditEventActionBase {
+  ): T {
     return new this(viewer, event, input);
   }
 
@@ -89,7 +90,7 @@ export class EditEventActionBase implements Action<Event> {
     id: ID,
     input: EventEditInput,
   ): Promise<Event> {
-    let event = await Event.loadX(viewer, id);
-    return await new this(viewer, event, input).saveX();
+    const event = await Event.loadX(viewer, id);
+    return new this(viewer, event, input).saveX();
   }
 }

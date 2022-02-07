@@ -38,12 +38,15 @@ function randomNum(): string {
 
 {{$node := useImport .Node}}
 {{$builder := printf "%sBuilder" .Node}}
+{{$input := printf "%sInput" .Node }}
 
 export class {{$builder}} implements {{useImport "Builder"}}<{{$node}}> {
   orchestrator: {{useImport "Orchestrator"}}<{{$node}}>;
   readonly placeholderID: {{useImport "ID"}};
   readonly ent = {{$node}};
-  private input: {{.Node}}Input;
+  readonly nodeType = {{useImport "NodeType"}}.{{$node}};
+  private input: {{$input}};
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: {{useImport "Viewer"}},
@@ -53,19 +56,19 @@ export class {{$builder}} implements {{useImport "Builder"}}<{{$node}}> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-{{$node}}`;
     this.input = action.getInput();
+    const updateInput = (d: {{$input}}) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new {{useImport "Orchestrator"}}({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "{{.TableName}}", 
       key: "id",
       loaderOptions: {{$node}}.loaderOptions(),
       builder: this,
-      action: action,
-      schema: {{useImport "schema"}},
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      {{useImport "schema"}},
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -79,6 +82,16 @@ export class {{$builder}} implements {{useImport "Builder"}}<{{$node}}> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   {{if .HasAssociationEdges -}}
@@ -189,18 +202,18 @@ export class {{$builder}} implements {{useImport "Builder"}}<{{$node}}> {
 
   async editedEnt(): Promise<{{$node}} | null> {
     {{/* TODO: throw if save() has not been called */ -}}
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<{{$node}}> {
     {{/* TODO: throw if saveX() has not been called */ -}}
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function(key: string, value: any) {
       if (value !== undefined) {
@@ -212,12 +225,20 @@ export class {{$builder}} implements {{useImport "Builder"}}<{{$node}}> {
       addField("{{$field.FieldName}}", fields.{{$tsFieldName}});
       {{ $inverseEdge := $field.GetInverseEdge -}}
       {{ if $inverseEdge -}}
-        if (fields.{{$tsFieldName}}) {
-          this.orchestrator.addInboundEdge(
-            fields.{{$tsFieldName}},
-            {{useImport "EdgeType"}}.{{$inverseEdge.TsEdgeConst}},
-            {{useImport "NodeType"}}.{{$inverseEdge.NodeInfo.Node}},
-          );
+        if (fields.{{$tsFieldName}} !== undefined) {
+          if (fields.{{$tsFieldName}}) {
+            this.orchestrator.addInboundEdge(
+              fields.{{$tsFieldName}},
+              {{useImport "EdgeType"}}.{{$inverseEdge.TsEdgeConst}},
+              {{useImport "NodeType"}}.{{$inverseEdge.NodeInfo.Node}},
+            );
+          }
+          if (this.existingEnt && this.existingEnt.{{$tsFieldName}} && this.existingEnt.{{$tsFieldName}} !== fields.{{$tsFieldName}}) {
+            this.orchestrator.removeInboundEdge(
+              this.existingEnt.{{$tsFieldName}},
+              {{useImport "EdgeType"}}.{{$inverseEdge.TsEdgeConst}},
+            );
+          }
         }
       {{end -}}
     {{end -}}
@@ -233,8 +254,11 @@ export class {{$builder}} implements {{useImport "Builder"}}<{{$node}}> {
     getNew{{$field.CamelCaseName}}Value(): {{$field.TsBuilderType}} | undefined {
       {{if $field.Private -}}
         return this.input.{{$field.TsFieldName}};
-      {{ else -}}
-        return this.input.{{$field.TsFieldName}} || this.existingEnt?.{{$field.TsFieldName}};
+      {{else -}}
+        if (this.input.{{$field.TsFieldName}} !== undefined) {
+          return this.input.{{$field.TsFieldName}}
+        }
+        return this.existingEnt?.{{$field.TsFieldName}};
       {{end -}}
     }
 

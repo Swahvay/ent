@@ -1,5 +1,7 @@
 import { Ent, ID, Viewer, Data } from "../core/base";
-import { DataOperation } from "../core/ent";
+import { DataOperation, loadEdges, loadEnts, loadRows } from "../core/ent";
+import * as clause from "../core/clause";
+import { ObjectLoaderFactory } from "../core/loaders/object_loader";
 import {
   Action,
   Builder,
@@ -8,9 +10,10 @@ import {
   WriteOperation,
   Trigger,
   Observer,
-} from "../action";
-import * as action from "../action";
+  TriggerReturn,
+} from "../action/action";
 import { executeOperations } from "../action/executor";
+import { EdgeInputData } from "../action/orchestrator";
 
 import { Dialect } from "../core/db";
 
@@ -22,7 +25,9 @@ import {
   Message,
   Contact,
   SimpleBuilder,
+  BuilderSchema,
   SimpleAction,
+  getTableName,
 } from "../testutils/builder";
 import { LoggedOutViewer, IDViewer } from "../core/viewer";
 import { BaseEntSchema, Field } from "../schema";
@@ -32,6 +37,7 @@ import {
   BooleanType,
   UUIDType,
 } from "../schema/field";
+import { JSONBType } from "../schema/json_field";
 import { ListBasedExecutor, ComplexExecutor } from "./executor";
 import { FakeLogger, EntCreationObserver } from "../testutils/fake_log";
 import { createRowForTest } from "../testutils/write";
@@ -46,6 +52,7 @@ import {
   setupSqlite,
   Table,
 } from "../testutils/db/test_db";
+import * as action from "../action";
 
 jest.mock("pg");
 QueryRecorder.mockPool(Pool);
@@ -60,6 +67,8 @@ const edges = [
   "senderToMessage",
   "workspaceMember",
   "recipientToMessage",
+  "objectToChangelog",
+  "changelogToParent",
 ];
 
 beforeEach(async () => {
@@ -115,6 +124,8 @@ describe("sqlite", () => {
       new GroupSchema(),
       new UserSchema(),
       new MessageSchema(),
+      new GroupMembershipSchema(),
+      new ChangelogSchema(),
     ].map((s) => tables.push(getSchemaTable(s, Dialect.SQLite)));
     return tables;
   };
@@ -124,11 +135,16 @@ describe("sqlite", () => {
 });
 
 jest.spyOn(action, "saveBuilder").mockImplementation(saveBuilder);
+jest.spyOn(action, "saveBuilderX").mockImplementation(saveBuilderX);
 
 async function saveBuilder<T extends Ent>(builder: Builder<T>): Promise<void> {
   const changeset = await builder.build();
   const executor = changeset.executor();
   operations = await executeOperations(executor, builder.viewer.context, true);
+}
+
+async function saveBuilderX<T extends Ent>(builder: Builder<T>): Promise<void> {
+  return saveBuilder(builder);
 }
 
 async function executeAction<T extends Ent, E = any>(
@@ -166,6 +182,11 @@ async function createGroup() {
     fields: groupFields,
   });
   return new Group(new LoggedOutViewer(), groupFields);
+}
+
+async function createUser(): Promise<User> {
+  const id = QueryRecorder.newID();
+  return new User(new IDViewer(id), { id });
 }
 
 class UserSchema extends BaseEntSchema {
@@ -209,6 +230,43 @@ class GroupSchema extends BaseEntSchema {
     StringType({ name: "funField", nullable: true }),
   ];
   ent = Group;
+}
+
+class GroupMembership implements Ent {
+  id: ID;
+  nodeType = "GroupMembership";
+  privacyPolicy = AlwaysAllowPrivacyPolicy;
+
+  constructor(public viewer: Viewer, public data: Data) {
+    this.id = data.id;
+  }
+}
+
+class GroupMembershipSchema extends BaseEntSchema {
+  fields: Field[] = [
+    UUIDType({ name: "ownerID" }),
+    UUIDType({ name: "addedBy" }),
+    BooleanType({ name: "notificationsEnabled" }),
+  ];
+  ent = GroupMembership;
+}
+
+class Changelog implements Ent {
+  id: ID;
+  nodeType = "Changelog";
+  privacyPolicy = AlwaysAllowPrivacyPolicy;
+
+  constructor(public viewer: Viewer, public data: Data) {
+    this.id = data.id;
+  }
+}
+
+class ChangelogSchema extends BaseEntSchema {
+  fields: Field[] = [
+    UUIDType({ name: "parentID", polymorphic: true }),
+    JSONBType({ name: "log" }),
+  ];
+  ent = Changelog;
 }
 
 class MessageSchema extends BaseEntSchema {
@@ -297,10 +355,124 @@ class UserAction extends SimpleAction<User> {
   observers: Observer<User>[] = [new EntCreationObserver<User>()];
 }
 
+type getMembershipFunction = (
+  viewer: Viewer,
+  edge: EdgeInputData,
+) => SimpleAction<Ent>;
+
+class GroupMembershipTrigger implements Trigger<Group> {
+  constructor(private getter: getMembershipFunction) {}
+  changeset(builder: SimpleBuilder<Group>, input: Data): TriggerReturn {
+    const inputEdges = builder.orchestrator.getInputEdges(
+      "workspaceMember",
+      WriteOperation.Insert,
+    );
+    const changesets: TriggerReturn = [];
+    for (const edge of inputEdges) {
+      // we're going to simplify and assume it doesn't currently exist
+      const memberAction = this.getter(builder.viewer, edge);
+      // store the membership edge in data field of member edge
+      builder.orchestrator.addOutboundEdge(edge.id, "workspaceMember", "User", {
+        data: memberAction.builder,
+      });
+      changesets.push(memberAction.changeset());
+    }
+    return Promise.all(changesets);
+  }
+}
+
+class EditGroupAction extends SimpleAction<Group> {
+  constructor(
+    public viewer: Viewer,
+    schema: BuilderSchema<Group>,
+    fields: Map<string, any>,
+    operation: WriteOperation = WriteOperation.Insert,
+    existingEnt: Group,
+    private getter: getMembershipFunction,
+  ) {
+    super(viewer, schema, fields, operation, existingEnt);
+  }
+  triggers = [new GroupMembershipTrigger(this.getter)];
+}
+
 function randomEmail(): string {
   const rand = Math.random().toString(16).substring(2);
 
   return `test+${rand}@email.com`;
+}
+
+async function verifyGroupMembers(group: Group, members: User[]) {
+  const memberEdges = await loadEdges({
+    edgeType: "workspaceMember",
+    id1: group.id,
+  });
+  const memberIDs = members.map((ent) => ent.id);
+  expect(memberIDs.sort()).toEqual(memberEdges.map((edge) => edge.id2).sort());
+  // @ts-ignore
+  const membershipids: ID[] = memberEdges
+    .map((edge) => edge.data)
+    .filter((str) => str !== null && str !== undefined);
+  return membershipids;
+}
+
+async function loadMemberships(viewer: Viewer, membershipids: ID[]) {
+  const tableName = getTableName(new GroupMembershipSchema());
+  return loadEnts(
+    viewer,
+    {
+      tableName,
+      ent: GroupMembership,
+      fields: ["id", "owner_id", "added_by", "notifications_enabled"],
+      loaderFactory: new ObjectLoaderFactory({
+        tableName,
+        fields: ["id", "owner_id", "added_by", "notifications_enabled"],
+        key: "id",
+      }),
+    },
+    ...membershipids,
+  );
+}
+
+async function loadChangelogs(viewer: Viewer, clids: ID[]) {
+  return loadEnts(
+    viewer,
+    {
+      tableName: "changelogs",
+      ent: Changelog,
+      fields: ["id", "parent_id", "log"],
+      loaderFactory: new ObjectLoaderFactory({
+        tableName: "changelogs",
+        fields: ["id", "parent_id", "log"],
+        key: "id",
+      }),
+    },
+    ...clids,
+  );
+}
+
+async function verifyChangelogFromMeberships(
+  user: User,
+  memberships: GroupMembership[],
+) {
+  await Promise.all(
+    memberships.map(async (membership) => {
+      const edges = await loadEdges({
+        edgeType: "objectToChangelog",
+        id1: membership.id,
+      });
+      expect(edges.length).toBe(1);
+      const clIDs = edges.map((edge) => edge.id2);
+      const cls = await loadChangelogs(user.viewer, clIDs);
+      expect(cls.length).toBe(1);
+      const cl: Changelog = cls[0];
+      expect(edges[0].id2).toBe(cl.id);
+      expect(JSON.parse(cl.data.log)).toMatchObject({
+        // also has ownerID...
+        addedBy: user.id,
+        notificationsEnabled: true,
+      });
+    }),
+  );
 }
 
 function commonTests() {
@@ -315,6 +487,20 @@ function commonTests() {
       WriteOperation.Insert,
     );
     const user = await action.saveX();
+    expect(operations.length).toBe(1);
+
+    // insert query
+    QueryRecorder.validateQueryStructuresFromLogs(
+      ml,
+      [
+        {
+          tableName: "users",
+          type: queryType.INSERT,
+        },
+      ],
+      // skipping assoc_edge_config load and potentially sqlite select *
+      true,
+    );
     ml.clear();
 
     const viewer = new LoggedOutViewer();
@@ -327,10 +513,17 @@ function commonTests() {
       user,
     );
 
-    let ent = await builder.save();
-    expect(ent).toBeUndefined();
-    // TODO for now it's the EditNodeOperation but we should skip it when no fields
+    await builder.saveX();
+    let ent = await builder.editedEntX();
+    expect(ent).toBeDefined();
     expect(operations.length).toBe(1);
+    // there's an operation but no query.
+    QueryRecorder.validateQueryStructuresFromLogs(
+      ml,
+      [],
+      // skipping assoc_edge_config load and potentially sqlite select *
+      true,
+    );
   });
 
   test("simple-one-op-created-ent", async () => {
@@ -346,12 +539,19 @@ function commonTests() {
 
     const exec = await executeAction(action, ListBasedExecutor);
 
-    let ent = await action.editedEnt();
-    expect(ent).not.toBe(null);
+    const ent = await action.editedEntX();
     expect(exec.resolveValue(action.builder.placeholderID)).toStrictEqual(ent);
-    expect(exec.resolveValue(ent?.id)).toBe(null);
+    expect(exec.resolveValue(ent.id)).toBe(null);
 
     expect(operations.length).toBe(1);
+
+    // data saved. confirm that default values on create set
+    const data = ent.data;
+    expect(data.id).toBe(ent.id);
+    expect(data.created_at).toBeDefined();
+    expect(data.updated_at).toBeDefined();
+    expect(data.first_name).toBe("Jon");
+    expect(data.last_name).toBe("Snow");
 
     QueryRecorder.validateQueryStructuresFromLogs(
       ml,
@@ -365,7 +565,7 @@ function commonTests() {
     );
   });
 
-  test("simple-one-op-no-created-ent", async () => {
+  test("simple-one-op-no-edited-ent", async () => {
     let id = QueryRecorder.newID();
     await createRowForTest({
       tableName: "users",
@@ -392,19 +592,16 @@ function commonTests() {
     action.builder.orchestrator.addOutboundEdge(id2, "fake_edge", "user");
 
     const exec = await executeAction(action, ListBasedExecutor);
-    let ent = await action.editedEnt();
-    expect(ent).not.toBe(null);
+    let ent = await action.editedEntX();
     expect(exec.resolveValue(action.builder.placeholderID)).toStrictEqual(ent);
+
+    // 2 operations. Edit NodeOperation still created because it's needed to resolve placeholder
+    // however, no writes done. see query below
 
     expect(operations.length).toBe(2);
     QueryRecorder.validateQueryStructuresFromLogs(
       ml,
       [
-        {
-          // TODO this shouldn't be here...
-          tableName: "users",
-          type: queryType.UPDATE,
-        },
         {
           tableName: "fake_edge_table",
           type: queryType.INSERT,
@@ -442,7 +639,7 @@ function commonTests() {
       // list based executor because dependencies but no changesets
       // can't actually run this on its own but that's expected
       await executeAction(contactAction, ListBasedExecutor);
-      fail("should not have gotten here");
+      throw new Error("should not have gotten here");
     } catch (e) {
       expect(e.message).toBe(
         `couldn't resolve field \`user_id\` with value ${userBuilder.placeholderID}`,
@@ -657,11 +854,6 @@ function commonTests() {
           type: queryType.INSERT,
         },
         {
-          tableName: "groups",
-          type: queryType.UPDATE,
-        },
-
-        {
           tableName: "channelMember_table",
           type: queryType.INSERT,
         },
@@ -705,6 +897,232 @@ function commonTests() {
     expect(
       FakeLogger.contains(`ent Contact created with id ${contact?.id}`),
     ).toBe(true);
+  });
+
+  test("nested edge id2. no field dependencies", async () => {
+    class CreateChangelogAction extends SimpleAction<Changelog> {}
+
+    class CreateMembershipAction extends SimpleAction<GroupMembership> {
+      triggers = [
+        {
+          async changeset(builder: SimpleBuilder<GroupMembership>, input) {
+            const clAction = new CreateChangelogAction(
+              builder.viewer,
+              new ChangelogSchema(),
+              new Map([
+                // no dependency on fields. all new
+                ["parentID", QueryRecorder.newID()],
+                ["parentType", "GroupMembership"],
+                ["log", input],
+              ]),
+              WriteOperation.Insert,
+            );
+            builder.orchestrator.addOutboundEdge(
+              clAction.builder,
+              "objectToChangelog",
+              "Changelog",
+            );
+            return clAction.changeset();
+          },
+        },
+      ];
+    }
+
+    const group = await createGroup();
+    const user = await createUser();
+    const members = await Promise.all([1, 2, 3].map(createUser));
+
+    const groupAction = new EditGroupAction(
+      new IDViewer(user.id),
+      new GroupSchema(),
+      new Map(),
+      WriteOperation.Edit,
+      group,
+      (viewer, edge) => {
+        return new CreateMembershipAction(
+          viewer,
+          new GroupMembershipSchema(),
+          new Map<string, any>([
+            ["ownerID", edge.id],
+            ["addedBy", viewer.viewerID!],
+            ["notificationsEnabled", true],
+          ]),
+          WriteOperation.Insert,
+        );
+      },
+    );
+    members.map((member) =>
+      groupAction.builder.orchestrator.addOutboundEdge(
+        member.id,
+        "workspaceMember",
+        "User",
+      ),
+    );
+    const editedGroup = await groupAction.saveX();
+    const membershipids = await verifyGroupMembers(editedGroup, members);
+    expect(membershipids.length).toBe(members.length);
+    const memberships = await loadMemberships(user.viewer, membershipids);
+    expect(membershipids.length).toBe(memberships.length);
+
+    await verifyChangelogFromMeberships(user, memberships);
+  });
+
+  test("nested edge id1. no field dependencies", async () => {
+    class CreateChangelogAction extends SimpleAction<Changelog> {}
+
+    class CreateMembershipAction extends SimpleAction<GroupMembership> {
+      triggers = [
+        {
+          async changeset(builder: SimpleBuilder<GroupMembership>, input) {
+            const clAction = new CreateChangelogAction(
+              builder.viewer,
+              new ChangelogSchema(),
+              new Map([
+                // no builder field
+                ["parentID", QueryRecorder.newID()],
+                ["parentType", "GroupMembership"],
+                ["log", input],
+              ]),
+              WriteOperation.Insert,
+            );
+            builder.orchestrator.addInboundEdge(
+              clAction.builder,
+              "changelogToParent",
+              "Changelog",
+            );
+            return clAction.changeset();
+          },
+        },
+      ];
+    }
+
+    const group = await createGroup();
+    const user = await createUser();
+    const members = await Promise.all([1, 2, 3].map(createUser));
+
+    const groupAction = new EditGroupAction(
+      new IDViewer(user.id),
+      new GroupSchema(),
+      new Map(),
+      WriteOperation.Edit,
+      group,
+      (viewer, edge) => {
+        return new CreateMembershipAction(
+          viewer,
+          new GroupMembershipSchema(),
+          new Map<string, any>([
+            ["ownerID", edge.id],
+            ["addedBy", viewer.viewerID!],
+            ["notificationsEnabled", true],
+          ]),
+          WriteOperation.Insert,
+        );
+      },
+    );
+    members.map((member) =>
+      groupAction.builder.orchestrator.addOutboundEdge(
+        member.id,
+        "workspaceMember",
+        "User",
+      ),
+    );
+    const editedGroup = await groupAction.saveX();
+    const membershipids = await verifyGroupMembers(editedGroup, members);
+    expect(membershipids.length).toBe(members.length);
+    const memberships = await loadMemberships(user.viewer, membershipids);
+    expect(membershipids.length).toBe(memberships.length);
+
+    // weird data model for test so we have to load it via a table scan. good old query
+    await Promise.all(
+      memberships.map(async (membership) => {
+        const edges = await loadRows({
+          clause: clause.And(
+            clause.Eq("edge_type", "changelogToParent"),
+            clause.Eq("id2", membership.id),
+          ),
+          fields: ["id1", "id2", "edge_type", "data"],
+          tableName: "changelogToParent_table",
+        });
+        expect(edges.length).toBe(1);
+        const clIDs = edges.map((edge) => edge.id1);
+        const cls = await loadChangelogs(user.viewer, clIDs);
+        expect(cls.length).toBe(1);
+        const cl: Changelog = cls[0];
+        expect(edges[0].id1).toBe(cl.id);
+        expect(JSON.parse(cl.data.log)).toMatchObject({
+          addedBy: user.id,
+          notificationsEnabled: true,
+        });
+      }),
+    );
+  });
+
+  test("nested with list + node + edge deps", async () => {
+    class CreateMembershipAction extends SimpleAction<GroupMembership> {
+      triggers = [
+        {
+          async changeset(builder: SimpleBuilder<GroupMembership>, input) {
+            const clAction = new CreateChangelogAction(
+              builder.viewer,
+              new ChangelogSchema(),
+              new Map([
+                ["parentID", builder],
+                ["parentType", "GroupMembership"],
+                ["log", input],
+              ]),
+              WriteOperation.Insert,
+            );
+            builder.orchestrator.addOutboundEdge(
+              clAction.builder,
+              "objectToChangelog",
+              "Changelog",
+            );
+            return clAction.changeset();
+          },
+        },
+      ];
+    }
+
+    class CreateChangelogAction extends SimpleAction<Changelog> {}
+
+    const group = await createGroup();
+    const user = await createUser();
+    const members = await Promise.all([1, 2, 3].map(createUser));
+
+    const groupAction = new EditGroupAction(
+      new IDViewer(user.id),
+      new GroupSchema(),
+      new Map(),
+      WriteOperation.Edit,
+      group,
+      (viewer, edge) => {
+        return new CreateMembershipAction(
+          viewer,
+          new GroupMembershipSchema(),
+          new Map<string, any>([
+            ["ownerID", edge.id],
+            ["addedBy", viewer.viewerID!],
+            ["notificationsEnabled", true],
+          ]),
+          WriteOperation.Insert,
+        );
+      },
+    );
+    members.map((member) =>
+      groupAction.builder.orchestrator.addOutboundEdge(
+        member.id,
+        "workspaceMember",
+        "User",
+      ),
+    );
+
+    const editedGroup = await groupAction.saveX();
+    const membershipids = await verifyGroupMembers(editedGroup, members);
+    const memberships = await loadMemberships(user.viewer, membershipids);
+
+    await verifyChangelogFromMeberships(user, memberships);
+
+    expect(membershipids.length).toBe(memberships.length);
   });
 
   test("conditional changesets", async () => {
@@ -877,7 +1295,7 @@ function commonTests() {
       const user = users[i];
       expect(user).not.toBeNull();
       if (!user) {
-        fail("impossicant");
+        throw new Error("impossicant");
       }
       expect(user).toBeInstanceOf(User);
 
@@ -887,7 +1305,7 @@ function commonTests() {
     }
 
     if (!message) {
-      fail("impossicant");
+      throw new Error("impossicant");
     }
 
     expect(message["data"].sender).toBe(users[0]?.id);

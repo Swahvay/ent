@@ -13,12 +13,12 @@ import {
   saveBuilder,
   saveBuilderX,
 } from "@snowtop/ent/action";
-import { Comment } from "../../..";
+import { Comment, User } from "../../..";
 import { EdgeType, NodeType } from "../../../generated/const";
 import schema from "../../../../schema/comment";
 
 export interface CommentInput {
-  authorID?: ID;
+  authorID?: ID | Builder<User>;
   body?: string;
   articleID?: ID | Builder<Ent>;
   articleType?: string;
@@ -36,7 +36,9 @@ export class CommentBuilder implements Builder<Comment> {
   orchestrator: Orchestrator<Comment>;
   readonly placeholderID: ID;
   readonly ent = Comment;
+  readonly nodeType = NodeType.Comment;
   private input: CommentInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -46,19 +48,19 @@ export class CommentBuilder implements Builder<Comment> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Comment`;
     this.input = action.getInput();
+    const updateInput = (d: CommentInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "comments",
       key: "id",
       loaderOptions: Comment.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -72,6 +74,16 @@ export class CommentBuilder implements Builder<Comment> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   // this gets the inputs that have been written for a given edgeType and operation
@@ -149,17 +161,17 @@ export class CommentBuilder implements Builder<Comment> {
   }
 
   async editedEnt(): Promise<Comment | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Comment> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -178,22 +190,34 @@ export class CommentBuilder implements Builder<Comment> {
   }
 
   // get value of AuthorID. Retrieves it from the input if specified or takes it from existingEnt
-  getNewAuthorIDValue(): ID | undefined {
-    return this.input.authorID || this.existingEnt?.authorID;
+  getNewAuthorIDValue(): ID | Builder<User> | undefined {
+    if (this.input.authorID !== undefined) {
+      return this.input.authorID;
+    }
+    return this.existingEnt?.authorID;
   }
 
   // get value of Body. Retrieves it from the input if specified or takes it from existingEnt
   getNewBodyValue(): string | undefined {
-    return this.input.body || this.existingEnt?.body;
+    if (this.input.body !== undefined) {
+      return this.input.body;
+    }
+    return this.existingEnt?.body;
   }
 
   // get value of ArticleID. Retrieves it from the input if specified or takes it from existingEnt
   getNewArticleIDValue(): ID | Builder<Ent> | undefined {
-    return this.input.articleID || this.existingEnt?.articleID;
+    if (this.input.articleID !== undefined) {
+      return this.input.articleID;
+    }
+    return this.existingEnt?.articleID;
   }
 
   // get value of ArticleType. Retrieves it from the input if specified or takes it from existingEnt
   getNewArticleTypeValue(): string | undefined {
-    return this.input.articleType || this.existingEnt?.articleType;
+    if (this.input.articleType !== undefined) {
+      return this.input.articleType;
+    }
+    return this.existingEnt?.articleType;
   }
 }

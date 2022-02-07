@@ -32,6 +32,7 @@ export const EventRemoveHostInputType = new GraphQLInputObjectType({
   name: "EventRemoveHostInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     eventID: {
+      description: "id of Event",
       type: GraphQLNonNull(GraphQLID),
     },
     hostID: {
@@ -70,7 +71,7 @@ export const EventRemoveHostType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<EventRemoveHostPayload> => {
-    let event = await EventRemoveHostAction.saveXFromID(
+    const event = await EventRemoveHostAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.eventID),
       mustDecodeIDFromGQLID(input.hostID),

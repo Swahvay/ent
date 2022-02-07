@@ -33,6 +33,7 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
   readonly placeholderID: ID;
   readonly ent = AuthCode;
   private input: AuthCodeInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -42,19 +43,19 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-AuthCode`;
     this.input = action.getInput();
+    const updateInput = (d: AuthCodeInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "auth_codes",
       key: "id",
       loaderOptions: AuthCode.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -68,6 +69,16 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<AuthCode>> {
@@ -91,17 +102,17 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
   }
 
   async editedEnt(): Promise<AuthCode | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<AuthCode> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -121,21 +132,33 @@ export class AuthCodeBuilder implements Builder<AuthCode> {
 
   // get value of code. Retrieves it from the input if specified or takes it from existingEnt
   getNewCodeValue(): string | undefined {
-    return this.input.code || this.existingEnt?.code;
+    if (this.input.code !== undefined) {
+      return this.input.code;
+    }
+    return this.existingEnt?.code;
   }
 
   // get value of guestID. Retrieves it from the input if specified or takes it from existingEnt
   getNewGuestIDValue(): ID | Builder<Guest> | undefined {
-    return this.input.guestID || this.existingEnt?.guestID;
+    if (this.input.guestID !== undefined) {
+      return this.input.guestID;
+    }
+    return this.existingEnt?.guestID;
   }
 
   // get value of emailAddress. Retrieves it from the input if specified or takes it from existingEnt
   getNewEmailAddressValue(): string | undefined {
-    return this.input.emailAddress || this.existingEnt?.emailAddress;
+    if (this.input.emailAddress !== undefined) {
+      return this.input.emailAddress;
+    }
+    return this.existingEnt?.emailAddress;
   }
 
   // get value of sentCode. Retrieves it from the input if specified or takes it from existingEnt
   getNewSentCodeValue(): boolean | undefined {
-    return this.input.sentCode || this.existingEnt?.sentCode;
+    if (this.input.sentCode !== undefined) {
+      return this.input.sentCode;
+    }
+    return this.existingEnt?.sentCode;
   }
 }

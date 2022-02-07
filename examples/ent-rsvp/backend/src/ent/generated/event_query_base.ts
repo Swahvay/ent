@@ -65,7 +65,10 @@ export const eventToGuestsDataLoaderFactory = new IndexLoaderFactory(
   },
 );
 
-export class EventToEventActivitiesQueryBase extends CustomEdgeQueryBase<EventActivity> {
+export class EventToEventActivitiesQueryBase extends CustomEdgeQueryBase<
+  Event,
+  EventActivity
+> {
   constructor(viewer: Viewer, src: Event | ID) {
     super(viewer, {
       src: src,
@@ -82,9 +85,16 @@ export class EventToEventActivitiesQueryBase extends CustomEdgeQueryBase<EventAc
   ): T {
     return new this(viewer, src);
   }
+
+  async sourceEnt(id: ID) {
+    return Event.load(this.viewer, id);
+  }
 }
 
-export class EventToGuestDataQueryBase extends CustomEdgeQueryBase<GuestData> {
+export class EventToGuestDataQueryBase extends CustomEdgeQueryBase<
+  Event,
+  GuestData
+> {
   constructor(viewer: Viewer, src: Event | ID) {
     super(viewer, {
       src: src,
@@ -101,9 +111,16 @@ export class EventToGuestDataQueryBase extends CustomEdgeQueryBase<GuestData> {
   ): T {
     return new this(viewer, src);
   }
+
+  async sourceEnt(id: ID) {
+    return Event.load(this.viewer, id);
+  }
 }
 
-export class EventToGuestGroupsQueryBase extends CustomEdgeQueryBase<GuestGroup> {
+export class EventToGuestGroupsQueryBase extends CustomEdgeQueryBase<
+  Event,
+  GuestGroup
+> {
   constructor(viewer: Viewer, src: Event | ID) {
     super(viewer, {
       src: src,
@@ -120,9 +137,13 @@ export class EventToGuestGroupsQueryBase extends CustomEdgeQueryBase<GuestGroup>
   ): T {
     return new this(viewer, src);
   }
+
+  async sourceEnt(id: ID) {
+    return Event.load(this.viewer, id);
+  }
 }
 
-export class EventToGuestsQueryBase extends CustomEdgeQueryBase<Guest> {
+export class EventToGuestsQueryBase extends CustomEdgeQueryBase<Event, Guest> {
   constructor(viewer: Viewer, src: Event | ID) {
     super(viewer, {
       src: src,
@@ -138,5 +159,9 @@ export class EventToGuestsQueryBase extends CustomEdgeQueryBase<Guest> {
     src: Event | ID,
   ): T {
     return new this(viewer, src);
+  }
+
+  async sourceEnt(id: ID) {
+    return Event.load(this.viewer, id);
   }
 }

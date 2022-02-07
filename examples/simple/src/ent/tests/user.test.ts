@@ -6,7 +6,14 @@ import {
   LoggedOutViewer,
   DB,
 } from "@snowtop/ent";
-import { User, Contact, Event, DaysOff, PreferredShift } from "..";
+import {
+  User,
+  Contact,
+  Event,
+  DaysOff,
+  PreferredShift,
+  ArticleToCommentsQuery,
+} from "..";
 
 import { v1 as uuidv1, v4 as uuidv4, validate } from "uuid";
 import { NodeType, EdgeType } from "../generated/const";
@@ -72,10 +79,12 @@ test("create user", async () => {
   let contacts = await user.queryContacts().queryEnts();
   expect(contacts.length).toBe(1);
   let contact = contacts[0];
+  // TODO load emails and verify
+  //  contact.queryContactEmails().que
 
   expect(contact.firstName).toBe("Jon");
   expect(contact.lastName).toBe("Snow");
-  expect(contact.emailAddress).toBe(user.emailAddress);
+  //  expect(contact.emailAddress).toBe(user.emailAddress);
   expect(contact.userID).toBe(user.id);
 
   // confirm contact was indicated as a self-contact
@@ -104,7 +113,7 @@ test("edit user", async () => {
     await EditUserAction.create(loggedOutViewer, user, {
       firstName: "First of his name",
     }).saveX();
-    fail("should have thrown exception");
+    throw new Error("should have thrown exception");
   } catch (err) {
     expect((err as Error).message).toMatch(
       /Logged out Viewer does not have permission to edit User/,
@@ -144,7 +153,7 @@ test("delete user", async () => {
 
   try {
     await DeleteUserAction.create(loggedOutViewer, user).saveX();
-    fail("should have thrown exception");
+    throw new Error("should have thrown exception");
   } catch (err) {
     expect((err as Error).message).toMatch(
       /Logged out Viewer does not have permission to delete User/,
@@ -219,7 +228,7 @@ describe("privacy", () => {
     try {
       // privacy indicates other user cannot load
       await User.loadX(new IDViewer(user2.id, { ent: user2 }), user.id);
-      fail("should have thrown exception");
+      throw new Error("should have thrown exception");
     } catch (e) {}
   });
 });
@@ -505,7 +514,12 @@ test("uniqueEdge|Node", async () => {
   let contact = contacts[0];
 
   let contact2 = await CreateContactAction.create(new IDViewer(jon.id), {
-    emailAddress: sansa.emailAddress,
+    emails: [
+      {
+        emailAddress: sansa.emailAddress,
+        label: "main",
+      },
+    ],
     firstName: sansa.firstName,
     lastName: sansa.lastName,
     userID: jon.id,
@@ -524,7 +538,9 @@ test("uniqueEdge|Node", async () => {
     editAction.builder.addSelfContact(contact2);
     await editAction.saveX();
 
-    fail("should have throw an exception trying to write duplicate edge");
+    throw new Error(
+      "should have throw an exception trying to write duplicate edge",
+    );
   } catch (e) {
     expect((e as Error).message).toMatch(
       /duplicate key value violates unique constraint/,
@@ -561,7 +577,7 @@ test("uniqueEdge|Node", async () => {
 test("loadX", async () => {
   try {
     await User.loadX(loggedOutViewer, uuidv4());
-    fail("should have thrown exception");
+    throw new Error("should have thrown exception");
   } catch (e) {}
 });
 
@@ -592,7 +608,7 @@ describe("edit email", () => {
       await EditEmailAddressAction.create(vc, user, {
         newEmail: user2.emailAddress,
       }).saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
       expect((e as Error).message).toMatch(/^cannot change email/);
     }
@@ -653,7 +669,7 @@ describe("edit email", () => {
         emailAddress: newEmail,
         code: code + "1",
       }).saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
       expect((e as Error).message).toMatch(
         /code (\d+) not found associated with user/,
@@ -669,7 +685,7 @@ describe("edit email", () => {
         emailAddress: randomEmail(),
         code: code!,
       }).saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
       expect((e as Error).message).toMatch(
         /code (\d+) not found associated with user/,
@@ -698,7 +714,7 @@ describe("edit phone number", () => {
       await EditPhoneNumberAction.create(vc, user, {
         newPhoneNumber: user2.phoneNumber!,
       }).saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
       expect((e as Error).message).toMatch(/^cannot change phoneNumber/);
     }
@@ -763,7 +779,7 @@ describe("edit phone number", () => {
         phoneNumber: newPhoneNumber,
         code: code + "1",
       }).saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
       expect((e as Error).message).toMatch(
         /code (\d+) not found associated with user/,
@@ -779,7 +795,7 @@ describe("edit phone number", () => {
         phoneNumber: randomPhoneNumber(),
         code: code!,
       }).saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
       expect((e as Error).message).toMatch(
         /code (\d+) not found associated with user/,
@@ -837,19 +853,36 @@ test("comments", async () => {
     articleType: user1.nodeType,
   }).saveX();
 
+  const author = await comment.loadAuthorX();
+  expect(author.id).toBe(user2.id);
+
   const action = EditUserAction.create(user1.viewer, user1, {});
   // privacy
   action.builder.addFriend(user2);
   await action.saveX();
 
   const commentsQuery = user1.queryComments();
-  const [count, ents] = await Promise.all([
+  const articleToCommentsQuery = ArticleToCommentsQuery.query(
+    user1.viewer,
+    user1,
+  );
+
+  const [
+    userToCommentsCount,
+    userToCommentsEnt,
+    articleToCommentsCount,
+    articleToCommentsEnt,
+  ] = await Promise.all([
     commentsQuery.queryCount(),
     commentsQuery.queryEnts(),
+    articleToCommentsQuery.queryCount(),
+    articleToCommentsQuery.queryEnts(),
   ]);
-  expect(count).toBe(1);
-  expect(ents.length).toBe(1);
-  expect(ents[0].id).toBe(comment.id);
+  expect(userToCommentsCount).toBe(1);
+  expect(articleToCommentsCount).toBe(1);
+  expect(userToCommentsEnt.length).toBe(1);
+  expect(userToCommentsEnt[0].id).toBe(comment.id);
+  expect(userToCommentsEnt).toStrictEqual(articleToCommentsEnt);
 
   const postQuery = comment.queryPost();
   const [count2, ents2] = await Promise.all([
@@ -861,7 +894,7 @@ test("comments", async () => {
   expect(ents2[0].id).toBe(user1.id);
 });
 
-test("jsonb type", async () => {
+test("jsonb types", async () => {
   const user = await CreateUserAction.create(new LoggedOutViewer(), {
     firstName: "Jane",
     lastName: "Doe",
@@ -872,11 +905,31 @@ test("jsonb type", async () => {
       finishedNux: true,
       notifTypes: [NotifType.EMAIL],
     },
+    prefsList: [
+      {
+        finishedNux: true,
+        notifTypes: [NotifType.EMAIL],
+      },
+      {
+        finishedNux: false,
+        notifTypes: [NotifType.MOBILE],
+      },
+    ],
   }).saveX();
   expect(user.prefs).toStrictEqual({
     finishedNux: true,
     notifTypes: [NotifType.EMAIL],
   });
+  expect(user.prefsList).toStrictEqual([
+    {
+      finishedNux: true,
+      notifTypes: [NotifType.EMAIL],
+    },
+    {
+      finishedNux: false,
+      notifTypes: [NotifType.MOBILE],
+    },
+  ]);
 });
 
 test("json type", async () => {
@@ -897,7 +950,7 @@ test("json type", async () => {
   });
 });
 
-test("json type fail", async () => {
+test("json type throw new Error", async () => {
   try {
     await CreateUserAction.create(new LoggedOutViewer(), {
       firstName: "Jane",
@@ -909,7 +962,7 @@ test("json type fail", async () => {
         finishedNux: true,
       },
     }).saveX();
-    fail("should throw");
+    throw new Error("should throw");
   } catch (err) {
     expect((err as Error).message).toMatch(
       /invalid field prefs_diff with value/,

@@ -25,7 +25,11 @@
   {{end -}}
 {{ end}}
 
+{{$extImpPath := .Package.ExternalImportPath -}}
 {{ range $int := $action.GetCustomInterfaces -}}
+  {{ range $imp := $int.GetEnumImports -}}
+    {{ reserveImport $extImpPath $imp -}}
+  {{ end -}}
   interface {{$int.TSType}} {
     {{ range $field := $int.Fields -}}
       {{$type := $field.TsBuilderType -}}
@@ -60,16 +64,14 @@
 
   export interface {{$inputName}} {
     {{ range $field := $action.GetFields -}}
-      {{ if $field.EditableField -}}
-        {{$type := $field.TsBuilderType -}}
-        {{range $import := $field.TsBuilderImports -}}
-          {{ $ignore := useImport $import -}}
-        {{end -}}
-        {{if isRequiredField $action $field -}}
-          {{$field.TsFieldName}}: {{$type}};
-        {{else -}}
-          {{$field.TsFieldName}}?: {{$type}};
-        {{end -}}
+      {{$type := $field.TsBuilderType -}}
+      {{range $import := $field.TsBuilderImports -}}
+        {{ $ignore := useImport $import -}}
+      {{end -}}
+      {{if isRequiredField $action $field -}}
+        {{$field.TsFieldName}}: {{$type}};
+      {{else -}}
+        {{$field.TsFieldName}}?: {{$type}};
       {{end -}}
     {{end -}}
 
@@ -216,7 +218,7 @@ export class {{$actionName}} implements {{useImport "Action"}}<{{$node}}> {
         await this.setEdgeType();
       {{ end -}}
       await this.builder.save();
-      return await this.builder.editedEnt();
+      return this.builder.editedEnt();
   {{ end -}}
   }
 
@@ -229,14 +231,14 @@ export class {{$actionName}} implements {{useImport "Action"}}<{{$node}}> {
         await this.setEdgeType();
       {{ end -}}
       await this.builder.saveX();
-      return await this.builder.editedEntX();
+      return this.builder.editedEntX();
   {{ end -}}
   }
 
   static create<T extends {{$actionName}}>(
     this: new ({{$constructor}}) => T,
     {{$constructor}},
-  ): {{$actionName}} {
+  ): T {
     return new this({{$newArgs}});
   }
 
@@ -258,11 +260,11 @@ export class {{$actionName}} implements {{useImport "Action"}}<{{$node}}> {
       {{else -}}
         ): Promise<{{$node}}> {
       {{end -}}
-      let {{$instance}} = await {{$node}}.loadX(viewer, id);
+      const {{$instance}} = await {{$node}}.loadX(viewer, id);
       {{if $hasInput -}}
-        return await new this(viewer, {{$instance}}, input).saveX();
+        return new this(viewer, {{$instance}}, input).saveX();
       {{else if edgeAction $action -}}
-        return await new this(viewer, {{$instance}})
+        return new this(viewer, {{$instance}})
         {{ range $edge := $edges -}}
           {{/* TODO this assumes there is only one edge */ -}}
           {{if removeEdgeAction $action -}}
@@ -273,7 +275,7 @@ export class {{$actionName}} implements {{useImport "Action"}}<{{$node}}> {
         {{end -}}
         .saveX();
       {{else -}}
-        return await new this(viewer, {{$instance}}).saveX();
+        return new this(viewer, {{$instance}}).saveX();
       {{end -}}
     } 
   {{end -}}

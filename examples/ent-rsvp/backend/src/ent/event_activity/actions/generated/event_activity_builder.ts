@@ -37,6 +37,7 @@ export class EventActivityBuilder implements Builder<EventActivity> {
   readonly placeholderID: ID;
   readonly ent = EventActivity;
   private input: EventActivityInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -46,19 +47,20 @@ export class EventActivityBuilder implements Builder<EventActivity> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-EventActivity`;
     this.input = action.getInput();
+    const updateInput = (d: EventActivityInput) =>
+      this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "event_activities",
       key: "id",
       loaderOptions: EventActivity.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -72,6 +74,16 @@ export class EventActivityBuilder implements Builder<EventActivity> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   // this gets the inputs that have been written for a given edgeType and operation
@@ -238,17 +250,17 @@ export class EventActivityBuilder implements Builder<EventActivity> {
   }
 
   async editedEnt(): Promise<EventActivity | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<EventActivity> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -271,36 +283,57 @@ export class EventActivityBuilder implements Builder<EventActivity> {
 
   // get value of Name. Retrieves it from the input if specified or takes it from existingEnt
   getNewNameValue(): string | undefined {
-    return this.input.name || this.existingEnt?.name;
+    if (this.input.name !== undefined) {
+      return this.input.name;
+    }
+    return this.existingEnt?.name;
   }
 
   // get value of eventID. Retrieves it from the input if specified or takes it from existingEnt
   getNewEventIDValue(): ID | Builder<Event> | undefined {
-    return this.input.eventID || this.existingEnt?.eventID;
+    if (this.input.eventID !== undefined) {
+      return this.input.eventID;
+    }
+    return this.existingEnt?.eventID;
   }
 
   // get value of StartTime. Retrieves it from the input if specified or takes it from existingEnt
   getNewStartTimeValue(): Date | undefined {
-    return this.input.startTime || this.existingEnt?.startTime;
+    if (this.input.startTime !== undefined) {
+      return this.input.startTime;
+    }
+    return this.existingEnt?.startTime;
   }
 
   // get value of EndTime. Retrieves it from the input if specified or takes it from existingEnt
   getNewEndTimeValue(): Date | null | undefined {
-    return this.input.endTime || this.existingEnt?.endTime;
+    if (this.input.endTime !== undefined) {
+      return this.input.endTime;
+    }
+    return this.existingEnt?.endTime;
   }
 
   // get value of Location. Retrieves it from the input if specified or takes it from existingEnt
   getNewLocationValue(): string | undefined {
-    return this.input.location || this.existingEnt?.location;
+    if (this.input.location !== undefined) {
+      return this.input.location;
+    }
+    return this.existingEnt?.location;
   }
 
   // get value of Description. Retrieves it from the input if specified or takes it from existingEnt
   getNewDescriptionValue(): string | null | undefined {
-    return this.input.description || this.existingEnt?.description;
+    if (this.input.description !== undefined) {
+      return this.input.description;
+    }
+    return this.existingEnt?.description;
   }
 
   // get value of InviteAllGuests. Retrieves it from the input if specified or takes it from existingEnt
   getNewInviteAllGuestsValue(): boolean | undefined {
-    return this.input.inviteAllGuests || this.existingEnt?.inviteAllGuests;
+    if (this.input.inviteAllGuests !== undefined) {
+      return this.input.inviteAllGuests;
+    }
+    return this.existingEnt?.inviteAllGuests;
   }
 }

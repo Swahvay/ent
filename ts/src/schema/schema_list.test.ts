@@ -8,9 +8,11 @@ import {
   StringListType,
   StringType,
   TimeListType,
+  TimeType,
   TimestamptzListType,
   UUIDType,
 } from "./field";
+import { JSONBListType, JSONListType } from "./json_field";
 import { Schema, Field } from ".";
 import { User, SimpleAction, BuilderSchema } from "../testutils/builder";
 import { TempDB, getSchemaTable } from "../testutils/db/test_db";
@@ -19,7 +21,12 @@ import DB, { Dialect } from "../core/db";
 import { Ent } from "../core/base";
 import * as fs from "fs";
 import { loadConfig } from "../core/config";
-import { convertBool, convertDate, convertList } from "../core/convert";
+import {
+  convertBool,
+  convertDate,
+  convertList,
+  convertJSON,
+} from "../core/convert";
 let tdb: TempDB;
 async function setupTempDB(dialect: Dialect, connString?: string) {
   beforeAll(async () => {
@@ -213,6 +220,9 @@ function commonTests() {
     };
 
     const times = [newDate(8), newDate(10), newDate(11, 30)];
+    const expected = times.map((time) =>
+      TimeType({ name: "foo" }).format(time),
+    );
 
     const action = new SimpleAction(
       new LoggedOutViewer(),
@@ -222,7 +232,7 @@ function commonTests() {
     await createTables(new AppointmentSchema());
 
     const appt = await action.saveX();
-    expect(convertList(appt.data.available_times)).toEqual(times);
+    expect(convertList(appt.data.available_times)).toEqual(expected);
   });
 
   test("boolean list", async () => {
@@ -317,7 +327,7 @@ function commonTests() {
 
     try {
       await action.saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (err) {
       expect(err.message).toBe("invalid field days with value red,Tuesday");
     }
@@ -326,41 +336,114 @@ function commonTests() {
   test("list validation. minLen", async () => {
     const t = IntegerListType({ name: "foo" }).minLen(2);
 
-    expect(t.valid([1, 2, 3])).toBe(true);
-    expect(t.valid([1, 2])).toBe(true);
-    expect(t.valid([1])).toBe(false);
+    expect(await t.valid([1, 2, 3])).toBe(true);
+    expect(await t.valid([1, 2])).toBe(true);
+    expect(await t.valid([1])).toBe(false);
   });
 
   test("list validation. maxLen", async () => {
     const t = IntegerListType({ name: "foo" }).maxLen(2);
 
-    expect(t.valid([1, 2, 3])).toBe(false);
-    expect(t.valid([1, 2])).toBe(true);
-    expect(t.valid([1])).toBe(true);
+    expect(await t.valid([1, 2, 3])).toBe(false);
+    expect(await t.valid([1, 2])).toBe(true);
+    expect(await t.valid([1])).toBe(true);
   });
 
   test("list validation. length", async () => {
     const t = IntegerListType({ name: "foo" }).length(2);
 
-    expect(t.valid([1, 2, 3])).toBe(false);
-    expect(t.valid([1, 2])).toBe(true);
-    expect(t.valid([1])).toBe(false);
+    expect(await t.valid([1, 2, 3])).toBe(false);
+    expect(await t.valid([1, 2])).toBe(true);
+    expect(await t.valid([1])).toBe(false);
   });
 
   test("list validation. range", async () => {
     const t = IntegerListType({ name: "foo" }).range(2, 10);
 
-    expect(t.valid([1, 2, 3])).toBe(false);
-    expect(t.valid([3, 4, 5, 6])).toBe(true);
-    expect(t.valid([3, 4, 5, 10])).toBe(false);
-    expect(t.valid([3, 4, 5, 11])).toBe(false);
+    expect(await t.valid([1, 2, 3])).toBe(false);
+    expect(await t.valid([3, 4, 5, 6])).toBe(true);
+    expect(await t.valid([3, 4, 5, 10])).toBe(false);
+    expect(await t.valid([3, 4, 5, 11])).toBe(false);
   });
 
   test("string list validation. range", async () => {
     const t = StringListType({ name: "foo" }).range("a", "z");
 
-    expect(t.valid(["a", "c", "d"])).toBe(true);
-    expect(t.valid(["e", "f", "g", "h"])).toBe(true);
-    expect(t.valid(["e", "f", "g", "h", "z"])).toBe(false);
+    expect(await t.valid(["a", "c", "d"])).toBe(true);
+    expect(await t.valid(["e", "f", "g", "h"])).toBe(true);
+    expect(await t.valid(["e", "f", "g", "h", "z"])).toBe(false);
+  });
+
+  class Preferences extends User {}
+  class PreferencesSchema implements Schema {
+    fields: Field[] = [
+      JSONBListType({
+        name: "prefsList",
+      }),
+    ];
+    ent = Preferences;
+  }
+
+  class PreferencesJSONSchema implements Schema {
+    fields: Field[] = [
+      JSONListType({
+        name: "prefsList",
+      }),
+    ];
+    ent = Preferences;
+  }
+
+  test("jsonb list", async () => {
+    const prefsList = [
+      {
+        key1: "1",
+        key2: 2,
+        key3: false,
+        key4: [1, 2, 3, 4],
+      },
+      {
+        bar: "ff",
+        bar2: "gg",
+        bar3: null,
+      },
+    ];
+    const action = new SimpleAction(
+      new LoggedOutViewer(),
+      new PreferencesSchema(),
+      new Map<string, any>([["prefsList", prefsList]]),
+    );
+    await createTables(new PreferencesSchema());
+
+    const ent = await action.saveX();
+    expect(convertList(ent.data.prefs_list, convertJSON)).toStrictEqual(
+      prefsList,
+    );
+  });
+
+  test("json list", async () => {
+    const prefsList = [
+      {
+        key1: "1",
+        key2: 2,
+        key3: false,
+        key4: [1, 2, 3, 4],
+      },
+      {
+        bar: "ff",
+        bar2: "gg",
+        bar3: null,
+      },
+    ];
+    const action = new SimpleAction(
+      new LoggedOutViewer(),
+      new PreferencesJSONSchema(),
+      new Map<string, any>([["prefsList", prefsList]]),
+    );
+    await createTables(new PreferencesJSONSchema());
+
+    const ent = await action.saveX();
+    expect(convertList(ent.data.prefs_list, convertJSON)).toStrictEqual(
+      prefsList,
+    );
   });
 }

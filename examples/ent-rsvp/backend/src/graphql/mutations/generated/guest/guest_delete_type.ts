@@ -12,7 +12,6 @@ import {
 } from "graphql";
 import { RequestContext } from "@snowtop/ent";
 import { mustDecodeIDFromGQLID } from "@snowtop/ent/graphql";
-import { Guest } from "src/ent/";
 import DeleteGuestAction from "src/ent/guest/actions/delete_guest_action";
 
 interface customGuestDeleteInput {
@@ -27,6 +26,7 @@ export const GuestDeleteInputType = new GraphQLInputObjectType({
   name: "GuestDeleteInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     guestID: {
+      description: "id of Guest",
       type: GraphQLNonNull(GraphQLID),
     },
   }),

@@ -88,7 +88,7 @@ func parseActionsFromInput(nodeName string, action *input.Action, fieldInfo *fie
 	// create/edit/delete
 	concreteAction, ok := typ.(concreteNodeActionType)
 	if ok {
-		fields, err := getFieldsForAction(action.Fields, fieldInfo, concreteAction)
+		fields, err := getFieldsForAction(action, fieldInfo, concreteAction)
 		if err != nil {
 			return nil, err
 		}
@@ -122,17 +122,17 @@ func parseActionsFromInput(nodeName string, action *input.Action, fieldInfo *fie
 		if len(action.ActionOnlyFields) != 0 {
 			return nil, fmt.Errorf("cannot have action only fields when using default actions")
 		}
-		return getActionsForMutationsType(nodeName, fieldInfo, exposeToGraphQL, action.Fields)
+		return getActionsForMutationsType(nodeName, fieldInfo, exposeToGraphQL, action)
 	}
 
 	return nil, errors.New("unsupported action type")
 }
 
-func getActionsForMutationsType(nodeName string, fieldInfo *field.FieldInfo, exposeToGraphQL bool, fieldNames []string) ([]Action, error) {
+func getActionsForMutationsType(nodeName string, fieldInfo *field.FieldInfo, exposeToGraphQL bool, action *input.Action) ([]Action, error) {
 	var actions []Action
 
 	createTyp := &createActionType{}
-	fields, err := getFieldsForAction(fieldNames, fieldInfo, createTyp)
+	fields, err := getFieldsForAction(action, fieldInfo, createTyp)
 	if err != nil {
 		return nil, err
 	}
@@ -145,12 +145,12 @@ func getActionsForMutationsType(nodeName string, fieldInfo *field.FieldInfo, exp
 			"",
 			exposeToGraphQL,
 			fields,
-			[]*NonEntField{},
+			[]*field.NonEntField{},
 		),
 	))
 
 	editTyp := &editActionType{}
-	fields, err = getFieldsForAction(fieldNames, fieldInfo, editTyp)
+	fields, err = getFieldsForAction(action, fieldInfo, editTyp)
 	if err != nil {
 		return nil, err
 	}
@@ -163,12 +163,12 @@ func getActionsForMutationsType(nodeName string, fieldInfo *field.FieldInfo, exp
 			"",
 			exposeToGraphQL,
 			fields,
-			[]*NonEntField{},
+			[]*field.NonEntField{},
 		),
 	))
 
 	deleteTyp := &deleteActionType{}
-	fields, err = getFieldsForAction(fieldNames, fieldInfo, deleteTyp)
+	fields, err = getFieldsForAction(action, fieldInfo, deleteTyp)
 	if err != nil {
 		return nil, err
 	}
@@ -181,15 +181,16 @@ func getActionsForMutationsType(nodeName string, fieldInfo *field.FieldInfo, exp
 			"",
 			exposeToGraphQL,
 			fields,
-			[]*NonEntField{},
+			[]*field.NonEntField{},
 		),
 	))
 	return actions, nil
 }
 
-const noFields = "__NO_FIELDS__"
+// provides a way to say this action doesn't have any fields
+const NO_FIELDS = "__NO_FIELDS__"
 
-func getFieldsForAction(fieldNames []string, fieldInfo *field.FieldInfo, typ concreteNodeActionType) ([]*field.Field, error) {
+func getFieldsForAction(action *input.Action, fieldInfo *field.FieldInfo, typ concreteNodeActionType) ([]*field.Field, error) {
 	var fields []*field.Field
 	if !typ.supportsFieldsFromEnt() {
 		return fields, nil
@@ -199,23 +200,38 @@ func getFieldsForAction(fieldNames []string, fieldInfo *field.FieldInfo, typ con
 	// add ability to automatically add id field
 	// add ability to automatically remove id field
 
-	// provides a way to say this action doesn't have any fields
-	if len(fieldNames) == 1 && fieldNames[0] == noFields {
+	fieldNames := action.Fields
+
+	excludedFields := make(map[string]bool)
+	requiredFields := make(map[string]bool)
+	optionalFields := make(map[string]bool)
+	noFields := action.NoFields || len(fieldNames) == 1 && fieldNames[0] == NO_FIELDS
+
+	for _, f := range action.ExcludedFields {
+		excludedFields[f] = true
+	}
+	for _, f := range action.RequiredFields {
+		requiredFields[f] = true
+	}
+	for _, f := range action.OptionalFields {
+		optionalFields[f] = true
+	}
+
+	if len(fieldNames) != 0 && len(excludedFields) != 0 {
+		return nil, fmt.Errorf("cannot provide both fields and excluded fields")
+	}
+
+	if noFields {
 		return fields, nil
 	}
-	// no override of fields so we should get default fields
-	if len(fieldNames) == 0 {
-		for _, f := range fieldInfo.Fields {
-			if f.ExposeToActionsByDefault() {
-				fields = append(fields, f)
-			}
-		}
-	} else if fieldInfo != nil {
-		// if a field is explicitly referenced, we want to automatically add it
-		for _, fieldName := range fieldNames {
+
+	getField := func(f *field.Field, fieldName string) (*field.Field, error) {
+		var required bool
+		var optional bool
+
+		if fieldName != "" {
 			parts := strings.Split(fieldName, ".")
-			var required bool
-			var optional bool
+
 			if len(parts) == 3 && parts[0] == parts[2] {
 				fieldName = parts[1]
 				switch parts[0] {
@@ -224,55 +240,78 @@ func getFieldsForAction(fieldNames []string, fieldInfo *field.FieldInfo, typ con
 
 				case "__optional__":
 					optional = true
-
 				}
 			}
-			f := fieldInfo.GetFieldByName(fieldName)
+		}
+		if f == nil {
+			f = fieldInfo.GetFieldByName(fieldName)
 			if f == nil {
 				return nil, fmt.Errorf("invalid field name %s passed", fieldName)
 			}
-			f2 := f
-			// required and edit field. force it to be required
-			// required. if optional or nullable, now field is required
-			// or field is now required in an edit mutation, by default, all fields are required...
-			if required {
-				// required
-				var err error
-				f2, err = f.Clone(field.Required())
-				if err != nil {
-					return nil, err
-				}
-			}
-			if optional {
-				// optional
-				var err error
-				f2, err = f.Clone(field.Optional())
-				if err != nil {
-					return nil, err
-				}
-			}
-			fields = append(fields, f2)
 		}
 
+		f2 := f
+		// required and edit field. force it to be required
+		// required. if optional or nullable, now field is required
+		// or field is now required in an edit mutation, by default, all fields are required...
+		if required || requiredFields[fieldName] {
+			// required
+			var err error
+			f2, err = f.Clone(field.Required())
+			if err != nil {
+				return nil, err
+			}
+		}
+		if optional || optionalFields[fieldName] {
+			// optional
+			var err error
+			f2, err = f.Clone(field.Optional())
+			if err != nil {
+				return nil, err
+			}
+		}
+		return f2, nil
+	}
+
+	// no override of fields so we should get default fields
+	if len(fieldNames) == 0 {
+		for _, f := range fieldInfo.Fields {
+			if f.ExposeToActionsByDefault() && f.EditableField() && !excludedFields[f.FieldName] {
+				f2, err := getField(f, f.FieldName)
+				if err != nil {
+					return nil, err
+				}
+				fields = append(fields, f2)
+			}
+		}
+	} else if fieldInfo != nil {
+		// if a field is explicitly referenced, we want to automatically add it
+		for _, fieldName := range fieldNames {
+			f, err := getField(nil, fieldName)
+			if err != nil {
+				return nil, err
+			}
+			if !f.EditableField() {
+				return nil, fmt.Errorf("field %s is not editable and cannot be added to action", fieldName)
+			}
+			fields = append(fields, f)
+		}
 	}
 	return fields, nil
 }
 
-func getNonEntFieldsFromInput(nodeName string, action *input.Action, typ concreteNodeActionType) ([]*NonEntField, error) {
-	var fields []*NonEntField
+func getNonEntFieldsFromInput(nodeName string, action *input.Action, typ concreteNodeActionType) ([]*field.NonEntField, error) {
+	var fields []*field.NonEntField
 
 	inputName := getInputNameForNodeActionType(typ, nodeName, action.CustomInputName)
 
-	for _, field := range action.ActionOnlyFields {
-		typ, err := field.GetEntType(inputName)
+	for _, f := range action.ActionOnlyFields {
+		typ, err := f.GetEntType(inputName)
 		if err != nil {
 			return nil, err
 		}
-		fields = append(fields, &NonEntField{
-			FieldName: field.Name,
-			FieldType: typ,
-			Nullable:  field.Nullable,
-		})
+
+		fields = append(fields, field.NewNonEntField(f.Name, typ, f.Nullable))
 	}
 	return fields, nil
 }
@@ -282,21 +321,17 @@ func getNonEntFieldsFromAssocGroup(
 	assocGroup *edge.AssociationEdgeGroup,
 	action *edge.EdgeAction,
 	typ concreteEdgeActionType,
-) ([]*NonEntField, error) {
-	var fields []*NonEntField
+) ([]*field.NonEntField, error) {
+	var fields []*field.NonEntField
 
 	inputName := getInputNameForEdgeActionType(typ, assocGroup, nodeName, "")
 
-	for _, field := range action.ActionOnlyFields {
-		typ, err := field.GetEntType(inputName)
+	for _, f := range action.ActionOnlyFields {
+		typ, err := f.GetEntType(inputName)
 		if err != nil {
 			return nil, err
 		}
-		fields = append(fields, &NonEntField{
-			FieldName: field.Name,
-			FieldType: typ,
-			Nullable:  field.Nullable,
-		})
+		fields = append(fields, field.NewNonEntField(f.Name, typ, f.Nullable))
 	}
 	return fields, nil
 }
@@ -360,9 +395,9 @@ func processEdgeGroupActions(nodeName string, assocGroup *edge.AssociationEdgeGr
 
 		var tsEnums []*enum.Enum
 		var gqlEnums []*enum.GQLEnum
-		var fields []*NonEntField
+		var fields []*field.NonEntField
 		if lang == base.GoLang {
-			fields = []*NonEntField{
+			fields = []*field.NonEntField{
 				{
 					FieldName: assocGroup.GroupStatusName,
 					FieldType: &enttype.StringType{},
@@ -379,7 +414,7 @@ func processEdgeGroupActions(nodeName string, assocGroup *edge.AssociationEdgeGr
 			values := assocGroup.GetStatusValues()
 			typ := fmt.Sprintf("%sInput", assocGroup.ConstType)
 
-			fields = []*NonEntField{
+			fields = []*field.NonEntField{
 				{
 					FieldName: assocGroup.TSGroupStatusName,
 					FieldType: &enttype.EnumType{
@@ -468,7 +503,7 @@ func getCommonInfo(
 	customActionName, customGraphQLName, customInputName string,
 	exposeToGraphQL bool,
 	fields []*field.Field,
-	nonEntFields []*NonEntField) commonActionInfo {
+	nonEntFields []*field.NonEntField) commonActionInfo {
 	var graphqlName string
 	if exposeToGraphQL {
 		graphqlName = getGraphQLNameForNodeActionType(typ, nodeName, customGraphQLName)
@@ -514,7 +549,7 @@ func getCommonInfoForGroupEdgeAction(
 	typ concreteEdgeActionType,
 	edgeAction *edge.EdgeAction,
 	lang base.Language,
-	fields []*NonEntField) commonActionInfo {
+	fields []*field.NonEntField) commonActionInfo {
 	var graphqlName, actionName string
 	if edgeAction.ExposeToGraphQL {
 		if edgeAction.CustomGraphQLName == "" {

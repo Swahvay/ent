@@ -65,12 +65,12 @@ export const guestToGuestDataDataLoaderFactory = new IndexLoaderFactory(
   },
 );
 
-export class GuestToAttendingEventsQueryBase extends AssocEdgeQueryBase<
+export abstract class GuestToAttendingEventsQueryBase extends AssocEdgeQueryBase<
   Guest,
   EventActivity,
   GuestToAttendingEventsEdge
 > {
-  constructor(viewer: Viewer, src: EdgeQuerySource<Guest>) {
+  constructor(viewer: Viewer, src: EdgeQuerySource<Guest, EventActivity>) {
     super(
       viewer,
       src,
@@ -81,11 +81,15 @@ export class GuestToAttendingEventsQueryBase extends AssocEdgeQueryBase<
   }
 
   static query<T extends GuestToAttendingEventsQueryBase>(
-    this: new (viewer: Viewer, src: EdgeQuerySource<Guest>) => T,
+    this: new (viewer: Viewer, src: EdgeQuerySource<Guest, EventActivity>) => T,
     viewer: Viewer,
-    src: EdgeQuerySource<Guest>,
+    src: EdgeQuerySource<Guest, EventActivity>,
   ): T {
     return new this(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return Guest.load(this.viewer, id);
   }
 
   queryAttending(): EventActivityToAttendingQuery {
@@ -101,12 +105,12 @@ export class GuestToAttendingEventsQueryBase extends AssocEdgeQueryBase<
   }
 }
 
-export class GuestToDeclinedEventsQueryBase extends AssocEdgeQueryBase<
+export abstract class GuestToDeclinedEventsQueryBase extends AssocEdgeQueryBase<
   Guest,
   EventActivity,
   GuestToDeclinedEventsEdge
 > {
-  constructor(viewer: Viewer, src: EdgeQuerySource<Guest>) {
+  constructor(viewer: Viewer, src: EdgeQuerySource<Guest, EventActivity>) {
     super(
       viewer,
       src,
@@ -117,11 +121,15 @@ export class GuestToDeclinedEventsQueryBase extends AssocEdgeQueryBase<
   }
 
   static query<T extends GuestToDeclinedEventsQueryBase>(
-    this: new (viewer: Viewer, src: EdgeQuerySource<Guest>) => T,
+    this: new (viewer: Viewer, src: EdgeQuerySource<Guest, EventActivity>) => T,
     viewer: Viewer,
-    src: EdgeQuerySource<Guest>,
+    src: EdgeQuerySource<Guest, EventActivity>,
   ): T {
     return new this(viewer, src);
+  }
+
+  sourceEnt(id: ID) {
+    return Guest.load(this.viewer, id);
   }
 
   queryAttending(): EventActivityToAttendingQuery {
@@ -137,7 +145,10 @@ export class GuestToDeclinedEventsQueryBase extends AssocEdgeQueryBase<
   }
 }
 
-export class GuestToAuthCodesQueryBase extends CustomEdgeQueryBase<AuthCode> {
+export class GuestToAuthCodesQueryBase extends CustomEdgeQueryBase<
+  Guest,
+  AuthCode
+> {
   constructor(viewer: Viewer, src: Guest | ID) {
     super(viewer, {
       src: src,
@@ -154,9 +165,16 @@ export class GuestToAuthCodesQueryBase extends CustomEdgeQueryBase<AuthCode> {
   ): T {
     return new this(viewer, src);
   }
+
+  async sourceEnt(id: ID) {
+    return Guest.load(this.viewer, id);
+  }
 }
 
-export class GuestToGuestDataQueryBase extends CustomEdgeQueryBase<GuestData> {
+export class GuestToGuestDataQueryBase extends CustomEdgeQueryBase<
+  Guest,
+  GuestData
+> {
   constructor(viewer: Viewer, src: Guest | ID) {
     super(viewer, {
       src: src,
@@ -172,5 +190,9 @@ export class GuestToGuestDataQueryBase extends CustomEdgeQueryBase<GuestData> {
     src: Guest | ID,
   ): T {
     return new this(viewer, src);
+  }
+
+  async sourceEnt(id: ID) {
+    return Guest.load(this.viewer, id);
   }
 }

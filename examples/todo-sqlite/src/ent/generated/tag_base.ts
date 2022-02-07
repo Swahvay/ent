@@ -2,7 +2,6 @@
 
 import {
   AllowIfViewerPrivacyPolicy,
-  AssocEdge,
   Context,
   CustomQuery,
   Data,
@@ -19,7 +18,7 @@ import {
   loadEnts,
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
-import { Account, EdgeType, NodeType, TagToTodosQuery } from "src/ent/internal";
+import { Account, NodeType, TagToTodosQuery } from "src/ent/internal";
 import schema from "src/schema/tag";
 
 const tableName = "tags";
@@ -109,7 +108,7 @@ export class TagBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await tagLoader.createLoader(context).load(id);
+    return tagLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends TagBase>(
@@ -128,8 +127,8 @@ export class TagBase {
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName,
+      fields,
       ent: this,
       loaderFactory: tagLoader,
     };

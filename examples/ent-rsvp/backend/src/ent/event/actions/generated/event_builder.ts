@@ -32,6 +32,7 @@ export class EventBuilder implements Builder<Event> {
   readonly placeholderID: ID;
   readonly ent = Event;
   private input: EventInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -41,19 +42,19 @@ export class EventBuilder implements Builder<Event> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Event`;
     this.input = action.getInput();
+    const updateInput = (d: EventInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "events",
       key: "id",
       loaderOptions: Event.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -67,6 +68,16 @@ export class EventBuilder implements Builder<Event> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<Event>> {
@@ -90,17 +101,17 @@ export class EventBuilder implements Builder<Event> {
   }
 
   async editedEnt(): Promise<Event | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Event> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -119,16 +130,25 @@ export class EventBuilder implements Builder<Event> {
 
   // get value of Name. Retrieves it from the input if specified or takes it from existingEnt
   getNewNameValue(): string | undefined {
-    return this.input.name || this.existingEnt?.name;
+    if (this.input.name !== undefined) {
+      return this.input.name;
+    }
+    return this.existingEnt?.name;
   }
 
   // get value of Slug. Retrieves it from the input if specified or takes it from existingEnt
   getNewSlugValue(): string | null | undefined {
-    return this.input.slug || this.existingEnt?.slug;
+    if (this.input.slug !== undefined) {
+      return this.input.slug;
+    }
+    return this.existingEnt?.slug;
   }
 
   // get value of creatorID. Retrieves it from the input if specified or takes it from existingEnt
   getNewCreatorIDValue(): ID | Builder<User> | undefined {
-    return this.input.creatorID || this.existingEnt?.creatorID;
+    if (this.input.creatorID !== undefined) {
+      return this.input.creatorID;
+    }
+    return this.existingEnt?.creatorID;
   }
 }

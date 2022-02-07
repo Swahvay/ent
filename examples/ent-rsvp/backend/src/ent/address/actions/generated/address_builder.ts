@@ -36,6 +36,7 @@ export class AddressBuilder implements Builder<Address> {
   readonly placeholderID: ID;
   readonly ent = Address;
   private input: AddressInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -45,19 +46,19 @@ export class AddressBuilder implements Builder<Address> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Address`;
     this.input = action.getInput();
+    const updateInput = (d: AddressInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "addresses",
       key: "id",
       loaderOptions: Address.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -71,6 +72,16 @@ export class AddressBuilder implements Builder<Address> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   async build(): Promise<Changeset<Address>> {
@@ -94,17 +105,17 @@ export class AddressBuilder implements Builder<Address> {
   }
 
   async editedEnt(): Promise<Address | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Address> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -127,36 +138,57 @@ export class AddressBuilder implements Builder<Address> {
 
   // get value of Street. Retrieves it from the input if specified or takes it from existingEnt
   getNewStreetValue(): string | undefined {
-    return this.input.street || this.existingEnt?.street;
+    if (this.input.street !== undefined) {
+      return this.input.street;
+    }
+    return this.existingEnt?.street;
   }
 
   // get value of City. Retrieves it from the input if specified or takes it from existingEnt
   getNewCityValue(): string | undefined {
-    return this.input.city || this.existingEnt?.city;
+    if (this.input.city !== undefined) {
+      return this.input.city;
+    }
+    return this.existingEnt?.city;
   }
 
   // get value of State. Retrieves it from the input if specified or takes it from existingEnt
   getNewStateValue(): string | undefined {
-    return this.input.state || this.existingEnt?.state;
+    if (this.input.state !== undefined) {
+      return this.input.state;
+    }
+    return this.existingEnt?.state;
   }
 
   // get value of ZipCode. Retrieves it from the input if specified or takes it from existingEnt
   getNewZipCodeValue(): string | undefined {
-    return this.input.zipCode || this.existingEnt?.zipCode;
+    if (this.input.zipCode !== undefined) {
+      return this.input.zipCode;
+    }
+    return this.existingEnt?.zipCode;
   }
 
   // get value of Apartment. Retrieves it from the input if specified or takes it from existingEnt
   getNewApartmentValue(): string | null | undefined {
-    return this.input.apartment || this.existingEnt?.apartment;
+    if (this.input.apartment !== undefined) {
+      return this.input.apartment;
+    }
+    return this.existingEnt?.apartment;
   }
 
   // get value of OwnerID. Retrieves it from the input if specified or takes it from existingEnt
   getNewOwnerIDValue(): ID | Builder<Ent> | undefined {
-    return this.input.ownerID || this.existingEnt?.ownerID;
+    if (this.input.ownerID !== undefined) {
+      return this.input.ownerID;
+    }
+    return this.existingEnt?.ownerID;
   }
 
   // get value of OwnerType. Retrieves it from the input if specified or takes it from existingEnt
   getNewOwnerTypeValue(): string | undefined {
-    return this.input.ownerType || this.existingEnt?.ownerType;
+    if (this.input.ownerType !== undefined) {
+      return this.input.ownerType;
+    }
+    return this.existingEnt?.ownerType;
   }
 }

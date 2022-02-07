@@ -35,6 +35,7 @@ export const ConfirmEmailAddressEditInputType = new GraphQLInputObjectType({
   name: "ConfirmEmailAddressEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     userID: {
+      description: "id of User",
       type: GraphQLNonNull(GraphQLID),
     },
     emailAddress: {
@@ -76,7 +77,7 @@ export const ConfirmEmailAddressEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<ConfirmEmailAddressEditPayload> => {
-    let user = await ConfirmEditEmailAddressAction.saveXFromID(
+    const user = await ConfirmEditEmailAddressAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.userID),
       {

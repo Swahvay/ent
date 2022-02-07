@@ -12,7 +12,6 @@ import {
 } from "graphql";
 import { RequestContext } from "@snowtop/ent";
 import { mustDecodeIDFromGQLID } from "@snowtop/ent/graphql";
-import { EventActivity } from "src/ent/";
 import DeleteEventActivityAction from "src/ent/event_activity/actions/delete_event_activity_action";
 
 interface customEventActivityDeleteInput {
@@ -27,6 +26,7 @@ export const EventActivityDeleteInputType = new GraphQLInputObjectType({
   name: "EventActivityDeleteInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     eventActivityID: {
+      description: "id of EventActivity",
       type: GraphQLNonNull(GraphQLID),
     },
   }),

@@ -5,16 +5,15 @@
 
 import {
   AllowIfViewerPrivacyPolicy,
-  AssocEdge,
   Context,
   CustomQuery,
   Data,
   ID,
   LoadEntOptions,
-  ObjectLoaderFactory,
   PrivacyPolicy,
   Viewer,
   convertDate,
+  convertList,
   loadCustomData,
   loadCustomEnts,
   loadEnt,
@@ -22,32 +21,24 @@ import {
   loadEnts,
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
+import { contactLoader, contactLoaderInfo } from "./loaders";
 import {
+  ContactEmail,
+  ContactPhoneNumber,
   ContactToCommentsQuery,
   ContactToLikersQuery,
-  EdgeType,
   NodeType,
   User,
 } from "../internal";
 import schema from "../../schema/contact";
-
-const tableName = "contacts";
-const fields = [
-  "id",
-  "created_at",
-  "updated_at",
-  "email_address",
-  "first_name",
-  "last_name",
-  "user_id",
-];
 
 export class ContactBase {
   readonly nodeType = NodeType.Contact;
   readonly id: ID;
   readonly createdAt: Date;
   readonly updatedAt: Date;
-  readonly emailAddress: string;
+  readonly emailIds: ID[];
+  readonly phoneNumberIds: ID[];
   readonly firstName: string;
   readonly lastName: string;
   readonly userID: ID;
@@ -56,7 +47,8 @@ export class ContactBase {
     this.id = data.id;
     this.createdAt = convertDate(data.created_at);
     this.updatedAt = convertDate(data.updated_at);
-    this.emailAddress = data.email_address;
+    this.emailIds = convertList(data.email_ids);
+    this.phoneNumberIds = convertList(data.phone_number_ids);
     this.firstName = data.first_name;
     this.lastName = data.last_name;
     this.userID = data.user_id;
@@ -129,7 +121,7 @@ export class ContactBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await contactLoader.createLoader(context).load(id);
+    return contactLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends ContactBase>(
@@ -148,8 +140,8 @@ export class ContactBase {
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName: contactLoaderInfo.tableName,
+      fields: contactLoaderInfo.fields,
       ent: this,
       loaderFactory: contactLoader,
     };
@@ -176,6 +168,22 @@ export class ContactBase {
     return ContactToLikersQuery.query(this.viewer, this.id);
   }
 
+  async loadEmails(): Promise<ContactEmail[]> {
+    return loadEnts(
+      this.viewer,
+      ContactEmail.loaderOptions(),
+      ...this.emailIds,
+    );
+  }
+
+  async loadPhoneNumbers(): Promise<ContactPhoneNumber[]> {
+    return loadEnts(
+      this.viewer,
+      ContactPhoneNumber.loaderOptions(),
+      ...this.phoneNumberIds,
+    );
+  }
+
   async loadUser(): Promise<User | null> {
     return loadEnt(this.viewer, this.userID, User.loaderOptions());
   }
@@ -184,9 +192,3 @@ export class ContactBase {
     return loadEntX(this.viewer, this.userID, User.loaderOptions());
   }
 }
-
-export const contactLoader = new ObjectLoaderFactory({
-  tableName,
-  fields,
-  key: "id",
-});

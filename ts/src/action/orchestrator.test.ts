@@ -18,6 +18,7 @@ import {
 import { LoggedOutViewer, IDViewer } from "../core/viewer";
 import { Changeset } from "../action";
 import { StringType, TimestampType, UUIDType } from "../schema/field";
+import { JSONBType } from "../schema/json_field";
 import { BaseEntSchema, Field } from "../schema";
 import {
   User,
@@ -36,6 +37,7 @@ import {
   DenyIfLoggedInRule,
   AlwaysDenyRule,
   DenyIfLoggedOutRule,
+  AllowIfEntPropertyIsRule,
 } from "../core/privacy";
 import { edgeDirection } from "./orchestrator";
 import { createRowForTest } from "../testutils/write";
@@ -96,6 +98,9 @@ describe("sqlite", () => {
       new UserSchemaWithStatus(),
       new UserSchemaExtended(),
       new UserSchemaServerDefault(),
+      new UserSchemaDefaultValueOnCreate(),
+      new UserSchemaDefaultValueOnCreateJSON(),
+      new UserSchemaDefaultValueOnCreateInvalidJSON(),
       new SchemaWithProcessors(),
       new EventSchema(),
       new AddressSchemaDerivedFields(),
@@ -150,6 +155,44 @@ class UserSchemaServerDefault extends BaseEntSchema {
     StringType({ name: "account_status", serverDefault: "ACTIVE" }),
   ];
   ent = UserServerDefault;
+}
+
+class UserSchemaDefaultValueOnCreate extends BaseEntSchema {
+  fields: Field[] = [
+    StringType({ name: "FirstName" }),
+    StringType({ name: "LastName" }),
+    StringType({
+      name: "account_status",
+      defaultValueOnCreate: () => "ACTIVE",
+    }),
+  ];
+  ent = UserServerDefault;
+}
+
+class UserDefaultValueOnCreate extends User {}
+
+class UserSchemaDefaultValueOnCreateJSON extends BaseEntSchema {
+  fields: Field[] = [
+    StringType({ name: "FirstName" }),
+    StringType({ name: "LastName" }),
+    JSONBType({
+      name: "data",
+      defaultValueOnCreate: () => ({}),
+    }),
+  ];
+  ent = UserDefaultValueOnCreate;
+}
+
+class UserSchemaDefaultValueOnCreateInvalidJSON extends BaseEntSchema {
+  fields: Field[] = [
+    StringType({ name: "FirstName" }),
+    StringType({ name: "LastName" }),
+    JSONBType({
+      name: "data",
+      defaultValueOnCreate: () => {},
+    }),
+  ];
+  ent = UserDefaultValueOnCreate;
 }
 
 class UserWithProcessors extends User {}
@@ -269,7 +312,7 @@ function commonTests() {
 
     try {
       await builder.build();
-      fail("should have thrown exception");
+      throw new Error("should have thrown exception");
     } catch (e) {
       expect(e.message).toBe(
         "field LastName set to null for non-nullable field",
@@ -288,7 +331,7 @@ function commonTests() {
 
     try {
       await builder.build();
-      fail("should have thrown exception");
+      throw new Error("should have thrown exception");
     } catch (e) {
       expect(e.message).toBe("required field LastName not set");
     }
@@ -305,6 +348,52 @@ function commonTests() {
     );
 
     await builder.build();
+  });
+
+  test("required field fine when default value on create exists", async () => {
+    const builder = new SimpleBuilder(
+      new LoggedOutViewer(),
+      new UserSchemaDefaultValueOnCreate(),
+      new Map([
+        ["FirstName", "Jon"],
+        ["LastName", "Snow"],
+      ]),
+    );
+
+    await builder.build();
+  });
+
+  test("required field fine when default value on create json ", async () => {
+    const builder = new SimpleBuilder(
+      new LoggedOutViewer(),
+      new UserSchemaDefaultValueOnCreateJSON(),
+      new Map([
+        ["FirstName", "Jon"],
+        ["LastName", "Snow"],
+      ]),
+    );
+
+    await builder.build();
+  });
+
+  test("required field when default value on create json wrong", async () => {
+    const builder = new SimpleBuilder(
+      new LoggedOutViewer(),
+      new UserSchemaDefaultValueOnCreateInvalidJSON(),
+      new Map([
+        ["FirstName", "Jon"],
+        ["LastName", "Snow"],
+      ]),
+    );
+
+    try {
+      await builder.build();
+      throw new Error("should have thrown");
+    } catch (e) {
+      expect((e as Error).message).toBe(
+        "defaultValueOnCreate() returned undefined for field data",
+      );
+    }
   });
 
   test("schema on edit", async () => {
@@ -442,7 +531,7 @@ function commonTests() {
 
       try {
         await builder.build();
-        fail("should not have gotten here");
+        throw new Error("should not have gotten here");
       } catch (e) {
         expect(e.message).toBe("invalid field zip with value 941");
       }
@@ -809,7 +898,7 @@ function commonTests() {
       const newUser = await action.saveX();
       expect(newUser).toBeInstanceOf(User);
       if (!newUser) {
-        fail("impossible");
+        throw new Error("impossible");
       }
 
       const edges = await loadEdges({
@@ -900,7 +989,7 @@ function commonTests() {
       const newUser = await action.saveX();
       expect(newUser).toBeInstanceOf(User);
       if (!newUser) {
-        fail("impossible");
+        throw new Error("impossible");
       }
 
       const edges = await loadEdges({
@@ -1297,7 +1386,7 @@ function commonTests() {
       const newUser = await action.saveX();
       expect(newUser).toBeInstanceOf(User);
       if (!newUser) {
-        fail("impossible");
+        throw new Error("impossible");
       }
 
       const edges = await loadEdges({
@@ -1390,7 +1479,7 @@ function commonTests() {
     const newUser = await action.saveX();
     expect(newUser).toBeInstanceOf(User);
     if (!newUser) {
-      fail("impossible");
+      throw new Error("impossible");
     }
 
     const edges = await loadEdges({
@@ -1549,7 +1638,7 @@ function commonTests() {
       try {
         await builder.build();
 
-        fail("should not get here");
+        throw new Error("should not get here");
       } catch (e) {
         expect(e.message).toBe("existing ent required with operation");
       }
@@ -1605,7 +1694,7 @@ function commonTests() {
 
       try {
         await builder.build();
-        fail("should not get here");
+        throw new Error("should not get here");
       } catch (e) {
         expect(e.message).toBe("existing ent required with operation");
       }
@@ -1647,7 +1736,7 @@ function commonTests() {
 
       try {
         await action.validX();
-        fail("should have thrown exception");
+        throw new Error("should have thrown exception");
       } catch (e) {
         expect(e.message).toBe("start time cannot be after end time");
       }
@@ -1733,7 +1822,7 @@ function commonTests() {
       };
       try {
         await action.validX();
-        fail("should have thrown");
+        throw new Error("should have thrown");
       } catch (e) {
         expect(e.message).toMatch(
           /Viewer with ID 1 does not have permission to create User/,
@@ -1760,7 +1849,7 @@ function commonTests() {
       };
       try {
         await action.validX();
-        fail("should have thrown");
+        throw new Error("should have thrown");
       } catch (e) {
         expect(e.message).toMatch(
           /Viewer with ID 1 does not have permission to edit User/,
@@ -1787,7 +1876,7 @@ function commonTests() {
       };
       try {
         await action.validX();
-        fail("should have thrown");
+        throw new Error("should have thrown");
       } catch (e) {
         expect(e.message).toMatch(
           /Viewer with ID 1 does not have permission to delete User/,
@@ -1814,12 +1903,56 @@ function commonTests() {
       };
       try {
         await action.validX();
-        fail("should have thrown");
+        throw new Error("should have thrown");
       } catch (e) {
         expect(e.message).toMatch(
           /Logged out Viewer does not have permission to delete User/,
         );
       }
+    });
+
+    test("unsafe ent in creation. valid", async () => {
+      let action = new SimpleAction(
+        new LoggedOutViewer(),
+        new UserSchema(),
+        new Map([
+          ["FirstName", "Jon"],
+          ["LastName", "Snow"],
+        ]),
+        WriteOperation.Insert,
+      );
+      action.getPrivacyPolicy = () => {
+        return {
+          rules: [
+            new AllowIfEntPropertyIsRule<User>("firstName", "Jon"),
+            AlwaysDenyRule,
+          ],
+        };
+      };
+      let valid = await action.valid();
+      expect(valid).toBe(true);
+    });
+
+    test("unsafe ent in creation. invalid", async () => {
+      let action = new SimpleAction(
+        new LoggedOutViewer(),
+        new UserSchema(),
+        new Map([
+          ["FirstName", "Sansa"],
+          ["LastName", "Snow"],
+        ]),
+        WriteOperation.Insert,
+      );
+      action.getPrivacyPolicy = () => {
+        return {
+          rules: [
+            new AllowIfEntPropertyIsRule<User>("firstName", "Jon"),
+            AlwaysDenyRule,
+          ],
+        };
+      };
+      let valid = await action.valid();
+      expect(valid).toBe(false);
     });
   });
 
@@ -1849,7 +1982,7 @@ function commonTests() {
       action.triggers = triggers;
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
 
       expect(user.data).toEqual({
@@ -1904,7 +2037,7 @@ function commonTests() {
       // this didn't replace the builder
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
       expect(user.data).toEqual({
         id: user.id,
@@ -1919,7 +2052,7 @@ function commonTests() {
       expect(contactAction!).not.toBe(null);
       let contact = await contactAction!.builder.orchestrator.editedEnt();
       if (!contact) {
-        fail("couldn't save contact");
+        throw new Error("couldn't save contact");
       }
       expect(contact.data).toEqual({
         id: contact.id,
@@ -1952,7 +2085,7 @@ function commonTests() {
 
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
 
       expect(user.data).toMatchObject({
@@ -1984,7 +2117,7 @@ function commonTests() {
 
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
 
       expect(user.data).toEqual({
@@ -2021,7 +2154,7 @@ function commonTests() {
 
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
 
       expect(user.data).toEqual({
@@ -2093,7 +2226,7 @@ function commonTests() {
 
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
 
       expect(user.data).toMatchObject({
@@ -2121,7 +2254,7 @@ function commonTests() {
 
       const user = await action.saveX();
       if (!user) {
-        fail("couldn't save user");
+        throw new Error("couldn't save user");
       }
 
       expect(user.data).toEqual({
@@ -2151,7 +2284,7 @@ function commonTests() {
 
       try {
         await action.saveX();
-        fail("expected error");
+        throw new Error("expected error");
       } catch (err) {
         expect(err.message).toMatch(
           /Viewer with ID 1 does not have permission to create UserExtended$/,
@@ -2239,7 +2372,7 @@ function commonTests() {
       );
       try {
         await action.saveX();
-        fail("should have thrown exception");
+        throw new Error("should have thrown exception");
       } catch (e) {
         expect(e.message).toBe("was able to create ent but not load it");
       }
@@ -2256,7 +2389,7 @@ function commonTests() {
       );
       try {
         await action.saveX();
-        fail("should have thrown exception");
+        throw new Error("should have thrown exception");
       } catch (e) {
         expect(e.message).toBe("was able to edit ent but not load it");
       }
@@ -2375,9 +2508,9 @@ function commonTests() {
     // logged out viewer with null viewer throws since it's still required
     try {
       await builder3.saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
-      expect(e.message).toBe("required field UserID not set");
+      expect(e.message).toBe("field UserID set to null for non-nullable field");
     }
   });
 
@@ -2417,9 +2550,9 @@ function commonTests() {
     // logged out viewer with null viewer throws since it's still required
     try {
       await builder3.saveX();
-      fail("should have thrown");
+      throw new Error("should have thrown");
     } catch (e) {
-      expect(e.message).toBe("required field UserID not set");
+      expect(e.message).toBe("field UserID set to null for non-nullable field");
     }
   });
 }
@@ -2480,12 +2613,14 @@ async function getFieldsFromBuilder<T extends Ent>(
   const ops = getOperations(c);
   expect(ops.length).toBe(expLength);
   for (const op of ops) {
-    const options = (op as EditNodeOperation).options;
+    const options = (op as EditNodeOperation<T>).options;
     if (options !== undefined) {
       return options.fields;
     }
   }
-  fail("couldn't find EditNodeOperation where fields are being edited");
+  throw new Error(
+    "couldn't find EditNodeOperation where fields are being edited",
+  );
 }
 
 async function getEdgeOpFromBuilder<T extends Ent>(
@@ -2507,7 +2642,7 @@ async function getEdgeOpFromBuilder<T extends Ent>(
       }
     }
   }
-  fail(`could not find edge operation with edgeType ${edgeType}`);
+  throw new Error(`could not find edge operation with edgeType ${edgeType}`);
 }
 
 let sendEmailObserver: Observer<User> = {

@@ -5,14 +5,12 @@
 
 import {
   AllowIfViewerPrivacyPolicy,
-  AssocEdge,
   Context,
   CustomQuery,
   Data,
   Ent,
   ID,
   LoadEntOptions,
-  ObjectLoaderFactory,
   PrivacyPolicy,
   Viewer,
   convertDate,
@@ -24,19 +22,14 @@ import {
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
 import { loadEntByType, loadEntXByType } from "./loadAny";
-import { CommentToPostQuery, EdgeType, NodeType } from "../internal";
+import { commentLoader, commentLoaderInfo } from "./loaders";
+import {
+  ArticleToCommentsQuery,
+  CommentToPostQuery,
+  NodeType,
+  User,
+} from "../internal";
 import schema from "../../schema/comment";
-
-const tableName = "comments";
-const fields = [
-  "id",
-  "created_at",
-  "updated_at",
-  "author_id",
-  "body",
-  "article_id",
-  "article_type",
-];
 
 export class CommentBase {
   readonly nodeType = NodeType.Comment;
@@ -125,7 +118,7 @@ export class CommentBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await commentLoader.createLoader(context).load(id);
+    return commentLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends CommentBase>(
@@ -140,12 +133,20 @@ export class CommentBase {
     return row;
   }
 
+  static queryFromArticle<T extends CommentBase>(
+    this: new (viewer: Viewer, data: Data) => T,
+    viewer: Viewer,
+    ent: Ent,
+  ): ArticleToCommentsQuery {
+    return ArticleToCommentsQuery.query(viewer, ent);
+  }
+
   static loaderOptions<T extends CommentBase>(
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName: commentLoaderInfo.tableName,
+      fields: commentLoaderInfo.fields,
       ent: this,
       loaderFactory: commentLoader,
     };
@@ -183,10 +184,12 @@ export class CommentBase {
       this.articleID,
     );
   }
-}
 
-export const commentLoader = new ObjectLoaderFactory({
-  tableName,
-  fields,
-  key: "id",
-});
+  async loadAuthor(): Promise<User | null> {
+    return loadEnt(this.viewer, this.authorID, User.loaderOptions());
+  }
+
+  loadAuthorX(): Promise<User> {
+    return loadEntX(this.viewer, this.authorID, User.loaderOptions());
+  }
+}

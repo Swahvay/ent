@@ -32,6 +32,7 @@ export class GuestGroupBuilder implements Builder<GuestGroup> {
   readonly placeholderID: ID;
   readonly ent = GuestGroup;
   private input: GuestGroupInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -41,19 +42,20 @@ export class GuestGroupBuilder implements Builder<GuestGroup> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-GuestGroup`;
     this.input = action.getInput();
+    const updateInput = (d: GuestGroupInput) =>
+      this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "guest_groups",
       key: "id",
       loaderOptions: GuestGroup.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -67,6 +69,16 @@ export class GuestGroupBuilder implements Builder<GuestGroup> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   // this gets the inputs that have been written for a given edgeType and operation
@@ -147,17 +159,17 @@ export class GuestGroupBuilder implements Builder<GuestGroup> {
   }
 
   async editedEnt(): Promise<GuestGroup | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<GuestGroup> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
@@ -175,11 +187,17 @@ export class GuestGroupBuilder implements Builder<GuestGroup> {
 
   // get value of InvitationName. Retrieves it from the input if specified or takes it from existingEnt
   getNewInvitationNameValue(): string | undefined {
-    return this.input.invitationName || this.existingEnt?.invitationName;
+    if (this.input.invitationName !== undefined) {
+      return this.input.invitationName;
+    }
+    return this.existingEnt?.invitationName;
   }
 
   // get value of EventID. Retrieves it from the input if specified or takes it from existingEnt
   getNewEventIDValue(): ID | Builder<Event> | undefined {
-    return this.input.eventID || this.existingEnt?.eventID;
+    if (this.input.eventID !== undefined) {
+      return this.input.eventID;
+    }
+    return this.existingEnt?.eventID;
   }
 }

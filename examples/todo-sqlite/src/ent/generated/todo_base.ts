@@ -2,7 +2,6 @@
 
 import {
   AllowIfViewerPrivacyPolicy,
-  AssocEdge,
   Context,
   CustomQuery,
   Data,
@@ -20,7 +19,7 @@ import {
   loadEnts,
 } from "@snowtop/ent";
 import { Field, getFields } from "@snowtop/ent/schema";
-import { Account, EdgeType, NodeType, TodoToTagsQuery } from "src/ent/internal";
+import { Account, NodeType, TodoToTagsQuery } from "src/ent/internal";
 import schema from "src/schema/todo";
 
 const tableName = "todos";
@@ -114,7 +113,7 @@ export class TodoBase {
     id: ID,
     context?: Context,
   ): Promise<Data | null> {
-    return await todoLoader.createLoader(context).load(id);
+    return todoLoader.createLoader(context).load(id);
   }
 
   static async loadRawDataX<T extends TodoBase>(
@@ -135,8 +134,8 @@ export class TodoBase {
     this: new (viewer: Viewer, data: Data) => T,
   ): LoadEntOptions<T> {
     return {
-      tableName: tableName,
-      fields: fields,
+      tableName,
+      fields,
       ent: this,
       loaderFactory: todoLoader,
     };

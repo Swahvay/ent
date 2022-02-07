@@ -62,7 +62,7 @@ func NewTestConfig(configPath, modulePath string, codegenCfg *CodegenConfig) (*C
 }
 
 func (cfg *Config) SetDebugMode(debugMode bool) {
-	cfg.debugMode = true
+	cfg.debugMode = debugMode
 }
 
 func (cfg *Config) DebugMode() bool {
@@ -115,6 +115,34 @@ func (cfg *Config) getCodegenConfig() *CodegenConfig {
 func (cfg *Config) ShouldUseRelativePaths() bool {
 	if codegen := cfg.getCodegenConfig(); codegen != nil {
 		return codegen.RelativeImports
+	}
+	return false
+}
+
+func (cfg *Config) DisableBase64Encoding() bool {
+	if codegen := cfg.getCodegenConfig(); codegen != nil {
+		return codegen.DisableBase64Encoding
+	}
+	return false
+}
+
+func (cfg *Config) Base64EncodeIDs() bool {
+	if codegen := cfg.getCodegenConfig(); codegen != nil {
+		return !codegen.DisableBase64Encoding
+	}
+	return true
+}
+
+func (cfg *Config) GenerateNodeQuery() bool {
+	if codegen := cfg.getCodegenConfig(); codegen != nil {
+		return !codegen.GenerateRootResolvers
+	}
+	return true
+}
+
+func (cfg *Config) GenerateRootResolvers() bool {
+	if codegen := cfg.getCodegenConfig(); codegen != nil {
+		return codegen.GenerateRootResolvers
 	}
 	return false
 }
@@ -266,12 +294,14 @@ type config struct {
 }
 
 type CodegenConfig struct {
-	DefaultEntPolicy    *PrivacyConfig  `yaml:"defaultEntPolicy"`
-	DefaultActionPolicy *PrivacyConfig  `yaml:"defaultActionPolicy"`
-	Prettier            *PrettierConfig `yaml:"prettier"`
-	RelativeImports     bool            `yaml:"relativeImports"`
-	DisableGraphQLRoot  bool            `yaml:"disableGraphQLRoot"`
-	GeneratedHeader     string          `yaml:"generatedHeader"`
+	DefaultEntPolicy      *PrivacyConfig  `yaml:"defaultEntPolicy"`
+	DefaultActionPolicy   *PrivacyConfig  `yaml:"defaultActionPolicy"`
+	Prettier              *PrettierConfig `yaml:"prettier"`
+	RelativeImports       bool            `yaml:"relativeImports"`
+	DisableGraphQLRoot    bool            `yaml:"disableGraphQLRoot"`
+	GeneratedHeader       string          `yaml:"generatedHeader"`
+	DisableBase64Encoding bool            `yaml:"disableBase64Encoding"`
+	GenerateRootResolvers bool            `yaml:"generateRootResolvers"`
 }
 
 type PrivacyConfig struct {

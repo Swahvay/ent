@@ -12,7 +12,10 @@ import {
   GraphQLString,
 } from "graphql";
 import { RequestContext } from "@snowtop/ent";
-import { mustDecodeIDFromGQLID } from "@snowtop/ent/graphql";
+import {
+  mustDecodeIDFromGQLID,
+  mustDecodeNullableIDFromGQLID,
+} from "@snowtop/ent/graphql";
 import { Address } from "src/ent/";
 import EditAddressAction, {
   AddressEditInput,
@@ -21,7 +24,7 @@ import { AddressType } from "src/graphql/resolvers/";
 
 interface customAddressEditInput extends AddressEditInput {
   addressID: string;
-  ownerID: string;
+  ownerID?: string;
 }
 
 interface AddressEditPayload {
@@ -32,6 +35,7 @@ export const AddressEditInputType = new GraphQLInputObjectType({
   name: "AddressEditInput",
   fields: (): GraphQLInputFieldConfigMap => ({
     addressID: {
+      description: "id of Address",
       type: GraphQLNonNull(GraphQLID),
     },
     street: {
@@ -85,7 +89,7 @@ export const AddressEditType: GraphQLFieldConfig<
     context: RequestContext,
     _info: GraphQLResolveInfo,
   ): Promise<AddressEditPayload> => {
-    let address = await EditAddressAction.saveXFromID(
+    const address = await EditAddressAction.saveXFromID(
       context.getViewer(),
       mustDecodeIDFromGQLID(input.addressID),
       {
@@ -94,6 +98,8 @@ export const AddressEditType: GraphQLFieldConfig<
         state: input.state,
         zipCode: input.zipCode,
         apartment: input.apartment,
+        ownerID: mustDecodeNullableIDFromGQLID(input.ownerID),
+        ownerType: input.ownerType,
       },
     );
     return { address: address };

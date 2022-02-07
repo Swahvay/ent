@@ -18,7 +18,8 @@ import { EdgeType, NodeType } from "../../../generated/const";
 import schema from "../../../../schema/contact";
 
 export interface ContactInput {
-  emailAddress?: string;
+  emailIds?: ID[];
+  phoneNumberIds?: ID[];
   firstName?: string;
   lastName?: string;
   userID?: ID | Builder<User>;
@@ -36,7 +37,9 @@ export class ContactBuilder implements Builder<Contact> {
   orchestrator: Orchestrator<Contact>;
   readonly placeholderID: ID;
   readonly ent = Contact;
+  readonly nodeType = NodeType.Contact;
   private input: ContactInput;
+  private m: Map<string, any> = new Map();
 
   public constructor(
     public readonly viewer: Viewer,
@@ -46,19 +49,19 @@ export class ContactBuilder implements Builder<Contact> {
   ) {
     this.placeholderID = `$ent.idPlaceholderID$ ${randomNum()}-Contact`;
     this.input = action.getInput();
+    const updateInput = (d: ContactInput) => this.updateInput.apply(this, [d]);
 
     this.orchestrator = new Orchestrator({
-      viewer: viewer,
+      viewer,
       operation: this.operation,
       tableName: "contacts",
       key: "id",
       loaderOptions: Contact.loaderOptions(),
       builder: this,
-      action: action,
-      schema: schema,
-      editedFields: () => {
-        return this.getEditedFields.apply(this);
-      },
+      action,
+      schema,
+      editedFields: () => this.getEditedFields.apply(this),
+      updateInput,
     });
   }
 
@@ -72,6 +75,16 @@ export class ContactBuilder implements Builder<Contact> {
       ...this.input,
       ...input,
     };
+  }
+
+  // store data in Builder that can be retrieved by another validator, trigger, observer later in the action
+  storeData(k: string, v: any) {
+    this.m.set(k, v);
+  }
+
+  // retrieve data stored in this Builder with key
+  getStoredData(k: string) {
+    return this.m.get(k);
   }
 
   // this gets the inputs that have been written for a given edgeType and operation
@@ -182,24 +195,25 @@ export class ContactBuilder implements Builder<Contact> {
   }
 
   async editedEnt(): Promise<Contact | null> {
-    return await this.orchestrator.editedEnt();
+    return this.orchestrator.editedEnt();
   }
 
   async editedEntX(): Promise<Contact> {
-    return await this.orchestrator.editedEntX();
+    return this.orchestrator.editedEntX();
   }
 
   private getEditedFields(): Map<string, any> {
     const fields = this.input;
 
-    let result = new Map<string, any>();
+    const result = new Map<string, any>();
 
     const addField = function (key: string, value: any) {
       if (value !== undefined) {
         result.set(key, value);
       }
     };
-    addField("emailAddress", fields.emailAddress);
+    addField("email_ids", fields.emailIds);
+    addField("phone_number_ids", fields.phoneNumberIds);
     addField("firstName", fields.firstName);
     addField("lastName", fields.lastName);
     addField("userID", fields.userID);
@@ -210,23 +224,43 @@ export class ContactBuilder implements Builder<Contact> {
     return (node as Builder<Ent>).placeholderID !== undefined;
   }
 
-  // get value of emailAddress. Retrieves it from the input if specified or takes it from existingEnt
-  getNewEmailAddressValue(): string | undefined {
-    return this.input.emailAddress || this.existingEnt?.emailAddress;
+  // get value of email_ids. Retrieves it from the input if specified or takes it from existingEnt
+  getNewEmailIdsValue(): ID[] | undefined {
+    if (this.input.emailIds !== undefined) {
+      return this.input.emailIds;
+    }
+    return this.existingEnt?.emailIds;
+  }
+
+  // get value of phone_number_ids. Retrieves it from the input if specified or takes it from existingEnt
+  getNewPhoneNumberIdsValue(): ID[] | undefined {
+    if (this.input.phoneNumberIds !== undefined) {
+      return this.input.phoneNumberIds;
+    }
+    return this.existingEnt?.phoneNumberIds;
   }
 
   // get value of firstName. Retrieves it from the input if specified or takes it from existingEnt
   getNewFirstNameValue(): string | undefined {
-    return this.input.firstName || this.existingEnt?.firstName;
+    if (this.input.firstName !== undefined) {
+      return this.input.firstName;
+    }
+    return this.existingEnt?.firstName;
   }
 
   // get value of lastName. Retrieves it from the input if specified or takes it from existingEnt
   getNewLastNameValue(): string | undefined {
-    return this.input.lastName || this.existingEnt?.lastName;
+    if (this.input.lastName !== undefined) {
+      return this.input.lastName;
+    }
+    return this.existingEnt?.lastName;
   }
 
   // get value of userID. Retrieves it from the input if specified or takes it from existingEnt
   getNewUserIDValue(): ID | Builder<User> | undefined {
-    return this.input.userID || this.existingEnt?.userID;
+    if (this.input.userID !== undefined) {
+      return this.input.userID;
+    }
+    return this.existingEnt?.userID;
   }
 }

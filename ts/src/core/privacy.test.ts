@@ -45,7 +45,7 @@ class User implements Ent {
   }
 }
 
-const getUser = function(
+const getUser = function (
   v: Viewer,
   id: string,
   privacyPolicy: PrivacyPolicy,
@@ -255,7 +255,7 @@ describe("applyPrivacyPolicyX", () => {
     const user = getUser(loggedOutViewer, "1", policy);
     try {
       await applyPrivacyPolicyX(user.viewer, policy, user);
-      fail("should not get here");
+      throw new Error("should not get here");
     } catch (e) {
       expect(e.message).toBe(
         `ent ${user.id} of type User is not visible for privacy reasons`,
@@ -269,7 +269,7 @@ describe("applyPrivacyPolicyX", () => {
       const bool = await applyPrivacyPolicyX(user.viewer, policy, user);
       expect(bool).toBe(true);
     } catch (e) {
-      fail(e.message);
+      throw new Error(e.message);
     }
   });
 });
@@ -384,7 +384,7 @@ describe("denywithReason", () => {
     const user = getUser(new IDViewer("1"), "1", policy);
     try {
       await applyPrivacyPolicyX(user.viewer, policy, user);
-      fail("should not get here");
+      throw new Error("should not get here");
     } catch (e) {
       expect(e.message).toBe("blocked privacy!");
     }
@@ -396,7 +396,43 @@ describe("denywithReason", () => {
       const bool = await applyPrivacyPolicyX(user.viewer, policy, user);
       expect(bool).toBe(true);
     } catch (e) {
-      fail(e.message);
+      throw new Error(e.message);
+    }
+  });
+});
+
+describe("denywithReason string", () => {
+  const policy = {
+    rules: [
+      {
+        async apply(v: Viewer, ent: Ent) {
+          if (v.viewerID === "1") {
+            return DenyWithReason("bye felicia");
+          }
+          return Skip();
+        },
+      },
+      AlwaysAllowRule,
+    ],
+  };
+
+  test("privacy not allowed", async () => {
+    const user = getUser(new IDViewer("1"), "1", policy);
+    try {
+      await applyPrivacyPolicyX(user.viewer, policy, user);
+      throw new Error("should not get here");
+    } catch (e) {
+      expect(e.message).toBe("bye felicia");
+    }
+  });
+
+  test("privacy allowed!", async () => {
+    const user = getUser(new IDViewer("2"), "1", policy);
+    try {
+      const bool = await applyPrivacyPolicyX(user.viewer, policy, user);
+      expect(bool).toBe(true);
+    } catch (e) {
+      throw new Error(e.message);
     }
   });
 });
